@@ -66,12 +66,27 @@
     anaSrc: "all", anaType: "all",
   };
   let prevVisit = store.get("lastSeen", Date.now() - 12 * 3600e3);
-  const readSet = new Set(store.get("read", []));
   let saved = store.get("saved", []);
+  let cats = store.get("cats", ["À lire", "Travail", "Culture générale"]);
+  // État « lu » : id -> date de lecture. Un sujet mis à jour après lecture redevient non lu.
+  const readMap = store.get("readmap", {});
+  function setRead(key, on) {
+    if (on) readMap[key] = Date.now(); else delete readMap[key];
+    const keys = Object.keys(readMap);
+    if (keys.length > 900) keys.sort((a, b) => readMap[a] - readMap[b]).slice(0, keys.length - 900).forEach((k) => delete readMap[k]);
+    store.set("readmap", readMap);
+  }
+  const isRead = (s) => !!readMap[s.id] && readMap[s.id] >= t(s.last);
+  const isUpdated = (s) => !!readMap[s.id] && readMap[s.id] < t(s.last);
+  const isReadA = (a) => !!readMap["a:" + a.id];
 
-  function markRead(id) {
-    readSet.add(id);
-    store.set("read", [...readSet].slice(-600));
+  // Pertinence : politique, international, économie, société, sciences ; pas de sport ni de divertissement
+  const SPORT = /\b(ligue 1|ligue des champions|football|rugby|tennis|psg|f1|formule 1|grand prix|basket|handball|cyclisme|tour de france|mercato|match|coupe du monde|euro 20\d\d|top 14|nba|roland-garros|tops et (les )?flops)\b/i;
+  function relevant(s) {
+    if (s.categorie === "Sport") return false;
+    if (s.categorie === "Culture" && (s.importance || 0) < 4) return false;
+    if (!["Politique", "International", "Économie"].includes(s.categorie) && SPORT.test(s.titre || "")) return false;
+    return true;
   }
 
   // ---------- Thème et taille du texte ----------
@@ -180,73 +195,114 @@
     const el = $("#view-direct");
     if (!S.live) {
       el.innerHTML = hero("Direct", null, true) + '<div class="skel"></div><div class="skel"></div><div class="skel"></div>' +
-        (S.meta?.empty ? `<div class="empty"><b>En attente du premier passage de Claude</b>Les sujets apparaissent après la première mise à jour horaire.</div>` : "");
+        (S.meta?.empty ? `<div class="empty"><b>En attente du premier passage</b>Les sujets apparaissent après la première mise à jour.</div>` : "");
       return;
     }
-    const all = stories();
-    const fresh = all.filter((s) => isNew(s) && s.importance >= 2);
-    const major = fresh.filter((s) => s.importance >= 4).length;
+    const all = stories().filter(relevant).filter((s) => S.showMinor || (s.importance || 0) >= 2);
+    const unread = all.filter((s) => !isRead(s));
+    const read = all.filter(isRead).sort((a, b) => (readMap[b.id] || 0) - (readMap[a.id] || 0));
+    const fresh = unread.filter((s) => t(s.last) > prevVisit).length;
+    const upd = unread.filter(isUpdated).length;
 
     let html = hero("Direct", null, true);
-    html += `<div class="since">
-      <div class="num">${fresh.length}</div>
-      <div class="txt">${fresh.length
-        ? `<b>nouvelle${fresh.length > 1 ? "s" : ""} depuis ta dernière visite</b>, ${ago(prevVisit)}${major ? `, dont <b>${major} importante${major > 1 ? "s" : ""}</b>` : ""}.`
-        : `<b>Rien de neuf</b> depuis ta dernière visite (${ago(prevVisit)}). Le fil ci-dessous reste à jour.`}</div></div>`;
+    html += `<div class="since"><div class="num">${unread.length}</div><div class="txt">${unread.length
+      ? `<b>actualité${unread.length > 1 ? "s" : ""} non lue${unread.length > 1 ? "s" : ""}</b>${fresh ? `, dont <b>${fresh} nouvelle${fresh > 1 ? "s" : ""}</b> depuis ta dernière visite (${ago(prevVisit)})` : `. Rien de neuf depuis ta dernière visite (${ago(prevVisit)})`}${upd ? `. ${upd} sujet${upd > 1 ? "s" : ""} déjà lu${upd > 1 ? "s" : ""} a du nouveau` : ""}.`
+      : `<b>Tout est lu.</b> Rien de neuf depuis ta dernière visite (${ago(prevVisit)}).`}
+      ${Object.keys(readMap).length ? "" : `<span class="hint">Glisse une actualité vers la droite pour la marquer comme lue.</span>`}</div></div>`;
 
     html += agendaWidget();
 
-    // filtres
     const counts = {};
-    all.forEach((s) => { if (s.importance >= 2) counts[s.categorie] = (counts[s.categorie] || 0) + 1; });
-    const chips = [["all", "Tout"], ["ess", "Essentiel"], ...CATS.filter((c) => counts[c]).map((c) => [c, c])];
+    unread.forEach((s) => { counts[s.categorie] = (counts[s.categorie] || 0) + 1; });
+    const chips = [["all", "Tout"], ["ess", "Essentiel"], ...CATS.filter((c) => counts[c] && c !== "Sport").map((c) => [c, c])];
     html += `<div class="chips" id="directChips">${chips.map(([k, l]) =>
       `<button class="chip ${S.filter === k ? "on" : ""}" data-f="${esc(k)}">${esc(l)}${counts[k] ? `<span class="c">${counts[k]}</span>` : ""}</button>`).join("")}</div>`;
 
-    let list = all.slice();
-    if (S.filter === "ess") list = list.filter((s) => s.importance >= 4);
-    else if (S.filter !== "all") list = list.filter((s) => s.categorie === S.filter);
-    const minor = list.filter((s) => s.importance < 2);
-    if (!S.showMinor) list = list.filter((s) => s.importance >= 2);
-
+    const filt = (l) => S.filter === "ess" ? l.filter((s) => s.importance >= 4) : S.filter === "all" ? l : l.filter((s) => s.categorie === S.filter);
+    const list = filt(unread);
     html += '<div class="feed">';
-    if (!list.length) html += `<div class="empty"><b>Aucun sujet</b>Rien dans cette rubrique pour l'instant.</div>`;
+    if (!list.length) html += `<div class="empty"><b>${unread.length ? "Rien dans cette rubrique" : "Écran propre"}</b>${unread.length ? "Choisis une autre rubrique." : "Les nouvelles actualités apparaîtront ici."}</div>`;
     let lastGroup = null, n = 0;
     for (const s of list.slice(0, S.limit)) {
-      const g = isNew(s) ? "new" : dayGroup(t(s.last));
+      const g = t(s.last) > prevVisit ? "new" : dayGroup(t(s.last));
       if (g !== lastGroup) {
-        html += g === "new"
-          ? `<div class="group-label new"><span class="live-dot"></span>Depuis ta dernière visite</div>`
-          : `<div class="group-label">${esc(g)}</div>`;
+        html += g === "new" ? `<div class="group-label new"><span class="live-dot"></span>Depuis ta dernière visite</div>` : `<div class="group-label">${esc(g)}</div>`;
         lastGroup = g;
       }
       html += storyCard(s, n++);
     }
     html += "</div>";
     if (list.length > S.limit) html += `<button class="load-more" id="moreStories">Afficher plus (${list.length - S.limit})</button>`;
-    if (minor.length && !S.showMinor) html += `<button class="load-more" id="showMinor">Afficher ${minor.length} info${minor.length > 1 ? "s" : ""} secondaire${minor.length > 1 ? "s" : ""}</button>`;
+    if (!S.showMinor) html += `<button class="load-more subtle" id="showMinor">Afficher aussi les infos secondaires</button>`;
+    const readList = filt(read);
+    if (readList.length) {
+      html += `<button class="read-toggle ${S.showRead ? "open" : ""}" id="readToggle"><span>Déjà lus</span><span class="c">${readList.length}</span>${ICON.chev}</button>`;
+      if (S.showRead) html += `<div class="feed read-feed">${readList.slice(0, 150).map((s, i) => storyCard(s, i)).join("")}</div>`;
+    }
     el.innerHTML = html;
 
     $$("#directChips .chip", el).forEach((b) => b.onclick = () => { S.filter = b.dataset.f; S.limit = 60; renderDirect(); });
-    $$(".story", el).forEach((c) => c.onclick = () => openStory(c.dataset.id));
+    $$(".story", el).forEach((c) => c.addEventListener("click", () => openStory(c.dataset.id)));
+    attachSwipe(el, ".story", (id) => { const s = stories().find((x) => x.id === id); if (!s) return; setRead(id, !isRead(s)); render(); });
     $$(".evt", el).forEach((c) => c.onclick = () => openAgenda());
     $("#agendaAll", el)?.addEventListener("click", openAgenda);
     $("#moreStories", el)?.addEventListener("click", () => { S.limit += 60; renderDirect(); });
     $("#showMinor", el)?.addEventListener("click", () => { S.showMinor = true; renderDirect(); });
+    $("#readToggle", el)?.addEventListener("click", () => { S.showRead = !S.showRead; renderDirect(); });
   }
 
   function storyCard(s, i) {
     s.liens = s.liens || [];
-    const cls = ["story", "imp" + s.importance, s.ai === false ? "raw" : "", readSet.has(s.id) && !isNew(s) ? "read" : ""].join(" ");
-    const sameText = !s.phrase || s.phrase === s.titre;
-    return `<article class="${cls}" data-id="${esc(s.id)}" style="animation-delay:${Math.min(i, 12) * 35}ms">
-      <div class="when">${esc(whenLabel(s.last))}${isNew(s) ? '<span class="newdot"></span>' : ""}</div>
+    const r = isRead(s), u = isUpdated(s);
+    const cls = ["story", "imp" + s.importance, s.ai === false ? "raw" : "", r ? "read" : ""].join(" ");
+    // Une seule ligne d'information : la phrase complète (le titre court reste pour la fiche)
+    const main = s.ai === false ? s.titre : (s.phrase || s.titre);
+    const sub = s.ai === false && s.phrase && s.phrase !== s.titre ? s.phrase : "";
+    const maj = s.maj || s.maj_relais;
+    return `<div class="swipe ${r ? "is-read" : ""}" style="animation-delay:${Math.min(i, 12) * 35}ms"><div class="swipe-bg"><span>${r ? "Remettre en non lu" : "Lu ✓"}</span></div>
+      <article class="${cls}" data-id="${esc(s.id)}">
+      <div class="when">${esc(whenLabel(s.last))}${!r && t(s.last) > prevVisit ? '<span class="newdot"></span>' : ""}</div>
       <div>
-        <div class="meta"><span class="cat ${esc(s.categorie)}">${esc(s.categorie)}</span>${s.importance >= 5 ? '<span class="tag-major">Majeur</span>' : ""}</div>
-        <div class="ttl">${esc(s.titre)}</div>
-        ${sameText ? "" : `<div class="phr">${esc(s.phrase)}</div>`}
+        <div class="meta"><span class="cat ${esc(s.categorie)}">${esc(s.categorie)}</span>${s.importance >= 5 ? '<span class="tag-major">Majeur</span>' : ""}${u ? '<span class="tag-upd">Du nouveau</span>' : ""}</div>
+        <div class="ttl">${esc(main)}</div>
+        ${sub ? `<div class="phr">${esc(sub)}</div>` : ""}
+        ${u && maj ? `<div class="maj">${esc(maj)}</div>` : ""}
         <div class="foot">${badges(s.liens)}<span class="n">${s.liens.length} article${s.liens.length > 1 ? "s" : ""}${s.complet ? " · lu en entier" : ""}</span></div>
-      </div></article>`;
+      </div></article></div>`;
+  }
+
+  // Glisser vers la droite : lu / non lu
+  function attachSwipe(root, sel, onCommit) {
+    $$(sel, root).forEach((card) => {
+      let x0 = null, y0 = 0, dx = 0, drag = false;
+      const wrap = card.parentElement;
+      card.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse" && e.button !== 0) return; x0 = e.clientX; y0 = e.clientY; dx = 0; drag = false; });
+      card.addEventListener("pointermove", (e) => {
+        if (x0 === null) return;
+        const ddx = e.clientX - x0, ddy = e.clientY - y0;
+        if (!drag) {
+          if (ddx > 12 && Math.abs(ddx) > Math.abs(ddy) * 1.4) { drag = true; card.classList.add("dragging"); try { card.setPointerCapture(e.pointerId); } catch {} }
+          else if (Math.abs(ddy) > 12 || ddx < -12) { x0 = null; return; }
+        }
+        if (drag) { dx = Math.max(0, ddx); card.style.transform = `translateX(${dx}px)`; wrap.style.setProperty("--p", Math.min(1, dx / 110).toFixed(2)); }
+      });
+      const end = () => {
+        if (x0 === null) return;
+        x0 = null;
+        card.classList.remove("dragging");
+        if (!drag) return;
+        card._swiped = Date.now();
+        drag = false;
+        if (dx > 100) {
+          card.style.transform = "translateX(105%)";
+          wrap.classList.add("gone");
+          setTimeout(() => onCommit(card.dataset.id), 280);
+        } else { card.style.transform = ""; wrap.style.setProperty("--p", 0); }
+      };
+      card.addEventListener("pointerup", end);
+      card.addEventListener("pointercancel", end);
+      card.addEventListener("click", (e) => { if (card._swiped && Date.now() - card._swiped < 500) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+    });
   }
 
   function agendaWidget() {
@@ -281,13 +337,19 @@
     }
     const isToday = r.date === todayISO();
     let html = hero("Revue de presse", isToday ? frDay() : "Édition du " + (r.label || ""));
-    if (r.essentiel) html += `<div class="essentiel"><div class="k">L'essentiel ce matin</div><p>${esc(r.essentiel)}</p></div>`;
+    if (Array.isArray(r.essentiel) && r.essentiel.length) {
+      html += `<div class="essentiel"><div class="k">L'essentiel ce matin</div>${r.essentiel.map((e) =>
+        `<div class="ess-item"><div class="ess-t">${esc(e.titre || "")}</div>${e.texte ? `<div class="ess-p">${esc(e.texte)}</div>` : ""}</div>`).join("")}</div>`;
+    } else if (r.essentiel) {
+      const parts = String(r.essentiel).split(/(?<=[.!?])\s+(?=[A-ZÀÂÉÈÊÎÔÛÇ«])/).filter(Boolean);
+      html += `<div class="essentiel"><div class="k">L'essentiel ce matin</div>${parts.map((p) => `<div class="ess-item"><div class="ess-p">${esc(p)}</div></div>`).join("")}</div>`;
+    }
     let n = 0;
     r.rubriques.forEach((rub, ri) => {
       html += `<h2 class="rub-title">${esc(rub.nom)}</h2>`;
       rub.sujets.forEach((s, si) => {
         html += `<div class="sujet" data-r="${ri}" data-s="${si}" style="animation-delay:${Math.min(n++, 10) * 40}ms">
-          <div class="ttl">${esc(s.titre)}</div><div class="ex">${esc(s.synthese)}</div>
+          <div class="ttl">${esc(s.titre)}</div><div class="ex">${esc(s.resume || s.synthese)}</div>
           <div class="foot">${badges(s.liens)}<span class="n" style="font-size:12px;color:var(--muted)">${(s.liens || []).length} article${(s.liens || []).length > 1 ? "s" : ""}</span></div></div>`;
       });
       if (rub.breves?.length) {
@@ -304,49 +366,60 @@
   }
 
   // ----- Analyses -----
+  function anaCard(a, i) {
+    const r = isReadA(a), savedOn = saved.some((x) => x.id === a.id);
+    return `<div class="swipe ${r ? "is-read" : ""}" style="animation-delay:${Math.min(i, 10) * 35}ms"><div class="swipe-bg"><span>${r ? "Remettre en non lu" : "Lu ✓"}</span></div>
+      <a class="ana ${r ? "read" : ""}" href="${esc(a.url)}" target="_blank" rel="noopener" data-id="${esc(a.id)}">
+        <div class="top"><span class="src ${srcClass(a.source)}">${srcLetter(a.source)}</span><span class="type">${esc(a.type)}</span><span>· ${esc(whenLabel(a.date))}</span>${!r && t(a.date) > prevVisit ? '<span class="newdot" style="width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block"></span>' : ""}</div>
+        <div class="ttl">${esc(a.titre)}</div>
+        ${a.auteur ? `<div class="aut">${esc(a.auteur)}</div>` : ""}
+        ${a.these ? `<div class="th">${esc(a.these)}</div>` : ""}
+        <button class="pill ${savedOn ? "on" : ""}" data-save="${esc(a.id)}" style="margin-top:10px;padding:5px 10px;font-size:12.5px">${ICON.save}${savedOn ? "Enregistré" : "Lire plus tard"}</button>
+      </a></div>`;
+  }
   function renderAnalyses() {
     const el = $("#view-analyses");
     const items = S.analyses?.items || [];
-    const freshCount = items.filter((a) => t(a.date) > prevVisit).length;
     let html = hero("Analyses", "Tribunes, éditoriaux, chroniques, décryptages");
     if (!items.length) {
       el.innerHTML = html + `<div class="empty"><b>Pas encore d'analyses</b>Elles apparaissent au fil des publications.</div>`;
       return;
     }
-    if (freshCount) html += `<div class="since"><div class="num">${freshCount}</div><div class="txt"><b>${freshCount > 1 ? "nouveaux textes" : "nouveau texte"}</b> depuis ta dernière visite.</div></div>`;
+    const unread = items.filter((a) => !isReadA(a));
+    const freshCount = unread.filter((a) => t(a.date) > prevVisit).length;
+    html += `<div class="since"><div class="num">${unread.length}</div><div class="txt">${unread.length
+      ? `<b>texte${unread.length > 1 ? "s" : ""} non lu${unread.length > 1 ? "s" : ""}</b>${freshCount ? `, dont <b>${freshCount} nouveau${freshCount > 1 ? "x" : ""}</b> depuis ta dernière visite` : ""}.`
+      : `<b>Tout est lu.</b>`}</div></div>`;
     const types = [...new Set(items.map((a) => a.type).filter(Boolean))];
     html += `<div class="chips" id="anaSrc">${[["all", "Tout"], ["Le Monde", "Le Monde"], ["Le Figaro", "Le Figaro"]].map(([k, l]) =>
       `<button class="chip ${S.anaSrc === k ? "on" : ""}" data-k="${k}">${l}</button>`).join("")}</div>`;
     if (types.length > 1) html += `<div class="chips" id="anaType" style="padding-top:0">${[["all", "Tous les genres"], ...types.map((x) => [x, x])].map(([k, l]) =>
       `<button class="chip ${S.anaType === k ? "on" : ""}" data-k="${esc(k)}">${esc(l)}</button>`).join("")}</div>`;
-    let list = items.filter((a) => (S.anaSrc === "all" || a.source === S.anaSrc) && (S.anaType === "all" || a.type === S.anaType));
+    const filt = (l) => l.filter((a) => (S.anaSrc === "all" || a.source === S.anaSrc) && (S.anaType === "all" || a.type === S.anaType));
+    const list = filt(unread);
+    if (!list.length) html += `<div class="empty"><b>Écran propre</b>Les nouveaux textes apparaîtront ici.</div>`;
     let lastG = null;
     list.slice(0, 120).forEach((a, i) => {
       const g = dayGroup(t(a.date));
       if (g !== lastG) { html += `<div class="group-label">${esc(g)}</div>`; lastG = g; }
-      const savedOn = saved.some((x) => x.id === a.id);
-      html += `<a class="ana ${readSet.has(a.id) ? "read" : ""}" href="${esc(a.url)}" target="_blank" rel="noopener" data-id="${esc(a.id)}" style="animation-delay:${Math.min(i, 10) * 35}ms">
-        <div class="top"><span class="src ${srcClass(a.source)}">${srcLetter(a.source)}</span><span class="type">${esc(a.type)}</span><span>· ${esc(whenLabel(a.date))}</span>${t(a.date) > prevVisit ? '<span class="newdot" style="width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block"></span>' : ""}</div>
-        <div class="ttl">${esc(a.titre)}</div>
-        ${a.auteur ? `<div class="aut">${esc(a.auteur)}</div>` : ""}
-        ${a.these ? `<div class="th">${esc(a.these)}</div>` : ""}
-        <button class="pill ${savedOn ? "on" : ""}" data-save="${esc(a.id)}" style="margin-top:10px;padding:5px 10px;font-size:12.5px">${ICON.save}${savedOn ? "Enregistré" : "Lire plus tard"}</button>
-      </a>`;
+      html += anaCard(a, i);
     });
+    const readList = filt(items.filter(isReadA));
+    if (readList.length) {
+      html += `<button class="read-toggle ${S.showReadA ? "open" : ""}" id="readToggleA"><span>Déjà lus</span><span class="c">${readList.length}</span>${ICON.chev}</button>`;
+      if (S.showReadA) html += `<div class="read-feed">${readList.slice(0, 150).map(anaCard).join("")}</div>`;
+    }
     el.innerHTML = html;
     $$("#anaSrc .chip", el).forEach((b) => b.onclick = () => { S.anaSrc = b.dataset.k; renderAnalyses(); });
     $$("#anaType .chip", el).forEach((b) => b.onclick = () => { S.anaType = b.dataset.k; renderAnalyses(); });
+    $("#readToggleA", el)?.addEventListener("click", () => { S.showReadA = !S.showReadA; renderAnalyses(); });
+    attachSwipe(el, ".ana", (id) => { setRead("a:" + id, !readMap["a:" + id]); render(); });
     $$(".ana", el).forEach((c) => c.addEventListener("click", (ev) => {
       const sb = ev.target.closest("[data-save]");
-      if (sb) {
-        ev.preventDefault(); ev.stopPropagation();
-        const a = items.find((x) => x.id === sb.dataset.save);
-        toggleSave({ id: a.id, kind: "analyse", titre: a.titre, sub: `${a.type} · ${a.source}`, url: a.url });
-        renderAnalyses();
-        return;
-      }
-      markRead(c.dataset.id);
-      setTimeout(() => c.classList.add("read"), 400);
+      if (!sb) return;
+      ev.preventDefault(); ev.stopPropagation();
+      const a = items.find((x) => x.id === sb.dataset.save);
+      toggleSave({ id: a.id, kind: "analyse", titre: a.titre, sub: `${a.type} · ${a.source}`, url: a.url }, renderAnalyses);
     }));
   }
 
@@ -453,15 +526,26 @@
 
   function actionsBar(item) {
     const on = saved.some((x) => x.id === item.id);
-    return `<div class="d-actions"><button class="pill ${on ? "on" : ""}" id="dSave">${ICON.save}${on ? "Enregistré" : "Enregistrer"}</button>
+    const st = item.kind === "story" ? stories().find((x) => x.id === item.id) : null;
+    return `<div class="d-actions">${st ? `<button class="pill" id="dRead">${isRead(st) ? "Remettre en non lu" : "Marquer comme lu"}</button>` : ""}
+      <button class="pill ${on ? "on" : ""}" id="dSave">${ICON.save}${on ? "Enregistré" : "Lire plus tard"}</button>
       <button class="pill" id="dShare">${ICON.share}Partager</button></div>`;
   }
   function bindActions(el, item, shareText) {
-    $("#dSave", el).onclick = (e) => {
-      toggleSave(item);
+    const sb = $("#dSave", el);
+    sb.onclick = () => toggleSave(item, () => {
       const on = saved.some((x) => x.id === item.id);
-      e.currentTarget.classList.toggle("on", on);
-      e.currentTarget.innerHTML = ICON.save + (on ? "Enregistré" : "Enregistrer");
+      sb.classList.toggle("on", on);
+      sb.innerHTML = ICON.save + (on ? "Enregistré" : "Lire plus tard");
+    });
+    const rb = $("#dRead", el);
+    if (rb) rb.onclick = () => {
+      const st = stories().find((x) => x.id === item.id);
+      if (!st) return;
+      const now = !isRead(st);
+      setRead(st.id, now);
+      render();
+      if (now) { closeSheet(); toast("Marqué comme lu"); } else rb.textContent = "Marquer comme lu";
     };
     $("#dShare", el).onclick = async () => {
       const url = item.url || (item.data?.liens || [])[0]?.url || location.href;
@@ -473,8 +557,8 @@
     return `<div class="d-meta"><span class="cat ${esc(s.categorie)}">${esc(s.categorie)}</span>${s.lieu ? `<span>· ${esc(s.lieu)}</span>` : ""}<span>· mis à jour ${esc(whenLabel(s.last || s.updated))}</span></div>
       <h1 class="d-title">${esc(s.titre)}</h1>
       ${s.phrase && s.phrase !== s.titre ? `<div class="d-lead">${esc(s.phrase)}</div>` : ""}
-      ${actionsBar({ id: s.id })}
-      ${s.maj_relais ? sec("Dernière info", para(s.maj_relais), true) : ""}
+      ${actionsBar({ id: s.id, kind: "story" })}
+      ${(s.maj || s.maj_relais) ? sec("Du nouveau", para(s.maj || s.maj_relais), true) : ""}
       ${figs(s.chiffres)}
       ${sec("Les faits", s.faits && s.faits !== s.phrase ? para(s.faits) : "")}
       ${sec("Contexte", s.contexte ? para(s.contexte) : "")}
@@ -490,12 +574,10 @@
   function openStory(id, snapshot) {
     const s = snapshot || stories().find((x) => x.id === id);
     if (!s) return;
-    markRead(s.id);
     const item = { id: s.id, kind: "story", titre: s.titre, sub: s.categorie, data: s };
     openSheet(storyHTML(s), (el) => {
       bindActions(el, item, s.phrase);
     });
-    setTimeout(() => $(`.story[data-id="${CSS.escape(s.id)}"]`)?.classList.add("read"), 500);
   }
 
   function openSujet(s, rub) {
@@ -504,7 +586,8 @@
     openSheet(`<div class="d-meta"><span class="cat">${esc(rub)}</span><span>· Revue de presse</span></div>
       <h1 class="d-title">${esc(s.titre)}</h1>
       ${actionsBar(item)}
-      ${sec("Synthèse", para(s.synthese))}
+      ${s.resume ? `<div class="d-lead">${esc(s.resume)}</div>` : ""}
+      ${sec("Synthèse", para(s.synthese || ""))}
       ${s.monde || s.figaro ? `<div class="d-sec"><h3><i></i>Les angles</h3><div class="angles">
         ${s.monde ? `<div class="angle"><span class="src monde">M</span><p>${esc(s.monde)}</p></div>` : ""}
         ${s.figaro ? `<div class="angle"><span class="src figaro">F</span><p>${esc(s.figaro)}</p></div>` : ""}</div></div>` : ""}
@@ -551,28 +634,89 @@
   }
 
   // ---------- Enregistrés ----------
-  function toggleSave(item) {
-    if (saved.some((x) => x.id === item.id)) { saved = saved.filter((x) => x.id !== item.id); toast("Retiré des enregistrés"); }
-    else {
-      const story = item.kind === "story" ? stories().find((s) => s.id === item.id) : null;
-      saved.unshift({ ...item, titre: item.titre || story?.titre, sub: item.sub || story?.categorie, data: item.data || story, at: Date.now() });
-      toast("Enregistré");
+  function toggleSave(item, after) {
+    if (saved.some((x) => x.id === item.id)) {
+      saved = saved.filter((x) => x.id !== item.id);
+      store.set("saved", saved);
+      toast("Retiré de « Lire plus tard »");
+      after && after();
+      return;
     }
-    saved = saved.slice(0, 200);
-    store.set("saved", saved);
+    pickCategory((cat) => {
+      const story = item.kind === "story" ? stories().find((s) => s.id === item.id) : null;
+      saved.unshift({ ...item, titre: item.titre || story?.titre, sub: item.sub || story?.categorie, data: item.data || story, at: Date.now(), cat });
+      saved = saved.slice(0, 300);
+      store.set("saved", saved);
+      toast(`Ajouté à « ${cat} »`);
+      after && after();
+    });
+  }
+  function saveCats() { store.set("cats", cats); }
+  function pickCategory(done) {
+    let el = $("#picker");
+    if (!el) { el = document.createElement("div"); el.id = "picker"; document.body.appendChild(el); }
+    const draw = () => {
+      el.innerHTML = `<div class="pk-back"></div><div class="pk-panel"><div class="pk-title">Lire plus tard dans…</div>
+        <div class="pk-cats">${cats.map((c, i) => `<button class="chip" data-i="${i}">${esc(c)}</button>`).join("")}</div>
+        <form class="pk-new"><input id="pkInput" class="search-input" placeholder="Nouvelle catégorie" maxlength="30"><button class="pill" type="submit">Créer</button></form>
+        <button class="pk-cancel">Annuler</button></div>`;
+      $$(".pk-cats .chip", el).forEach((b) => b.onclick = () => { close(); done(cats[b.dataset.i]); });
+      $(".pk-new", el).onsubmit = (e) => {
+        e.preventDefault();
+        const v = $("#pkInput", el).value.trim();
+        if (!v) return;
+        if (!cats.includes(v)) { cats.push(v); saveCats(); }
+        close(); done(v);
+      };
+      $(".pk-cancel", el).onclick = close;
+      $(".pk-back", el).onclick = close;
+    };
+    const close = () => el.classList.remove("on");
+    draw();
+    requestAnimationFrame(() => el.classList.add("on"));
   }
   function openSaved() {
-    const html = saved.length ? saved.map((x, i) => `<div class="breve" data-i="${i}" style="cursor:pointer">
-      <div class="bp" style="margin:0 0 3px">${esc(x.sub || "")} · ${esc(ago(x.at))}</div><div class="bt">${esc(x.titre)}</div></div>`).join("")
-      : `<div class="empty"><b>Rien d'enregistré</b>Utilise « Enregistrer » sur un sujet ou « Lire plus tard » sur une analyse.</div>`;
-    openSheet(`<h1 class="d-title">Enregistrés</h1><div class="breves" style="margin-top:16px">${html}</div>`, (el) => {
-      $$(".breve[data-i]", el).forEach((b) => b.onclick = () => {
-        const x = saved[b.dataset.i];
+    const cur = S.savedCat || "all";
+    const counts = {};
+    saved.forEach((x) => { const c = x.cat || cats[0]; counts[c] = (counts[c] || 0) + 1; });
+    const allCats = [...new Set([...cats, ...Object.keys(counts)])];
+    const list = saved.filter((x) => cur === "all" || (x.cat || cats[0]) === cur);
+    const rows = list.length ? list.map((x) => `<div class="breve sv" data-id="${esc(x.id)}">
+        <div class="bp" style="margin:0 0 3px"><span class="sv-cat">${esc(x.cat || cats[0])}</span> ${esc(x.sub || "")} · ${esc(ago(x.at))}</div>
+        <div class="bt">${esc(x.titre)}</div><button class="sv-del" data-del="${esc(x.id)}" aria-label="Retirer">×</button></div>`).join("")
+      : `<div class="empty"><b>Rien ici</b>Utilise « Lire plus tard » sur une actualité ou une analyse.</div>`;
+    openSheet(`<h1 class="d-title">Lire plus tard</h1>
+      <div class="chips" id="svCats" style="margin-top:12px">${[["all", "Tout", saved.length], ...allCats.map((c) => [c, c, counts[c] || 0])].map(([k, l, n]) =>
+        `<button class="chip ${cur === k ? "on" : ""}" data-k="${esc(k)}">${esc(l)}<span class="c">${n}</span></button>`).join("")}</div>
+      <div class="breves" style="margin-top:6px">${rows}</div>
+      <div class="d-sec"><h3><i></i>Catégories</h3>
+        <div class="cat-admin">${cats.map((c, i) => `<div class="setting"><span>${esc(c)}</span>${cats.length > 1 ? `<button class="pill" data-rm="${i}">Supprimer</button>` : ""}</div>`).join("")}</div>
+        <form class="pk-new" id="svNew"><input id="svInput" class="search-input" placeholder="Nouvelle catégorie" maxlength="30"><button class="pill" type="submit">Créer</button></form>
+      </div>`, (el) => {
+      $$("#svCats .chip", el).forEach((b) => b.onclick = () => { S.savedCat = b.dataset.k; openSaved(); });
+      $$(".sv", el).forEach((b) => b.onclick = (e) => {
+        const del = e.target.closest("[data-del]");
+        if (del) { saved = saved.filter((x) => x.id !== del.dataset.del); store.set("saved", saved); openSaved(); render(); return; }
+        const x = saved.find((y) => y.id === b.dataset.id);
+        if (!x) return;
         if (x.kind === "analyse") { window.open(x.url, "_blank", "noopener"); return; }
         if (x.kind === "story") openStory(x.id, stories().find((s) => s.id === x.id) || x.data);
         else if (x.kind === "sujet") openSujet(x.data, x.data.rub || "");
         else if (x.kind === "dossier") openDossier(x.data);
       });
+      $$("[data-rm]", el).forEach((b) => b.onclick = () => {
+        const c = cats[b.dataset.rm];
+        cats.splice(+b.dataset.rm, 1); saveCats();
+        saved.forEach((x) => { if (x.cat === c) x.cat = cats[0]; }); store.set("saved", saved);
+        if (S.savedCat === c) S.savedCat = "all";
+        openSaved();
+      });
+      $("#svNew", el).onsubmit = (e) => {
+        e.preventDefault();
+        const v = $("#svInput", el).value.trim();
+        if (v && !cats.includes(v)) { cats.push(v); saveCats(); }
+        openSaved();
+      };
     });
   }
 
@@ -619,7 +763,12 @@
       (el) => {
         $$("#segTheme button", el).forEach((b) => b.onclick = () => { store.set("theme", b.dataset.k); applyPrefs(); $$("#segTheme button", el).forEach((x) => x.classList.toggle("on", x === b)); });
         $$("#segFs button", el).forEach((b) => b.onclick = () => { store.set("fs", +b.dataset.k); applyPrefs(); $$("#segFs button", el).forEach((x) => x.classList.toggle("on", x === b)); });
-        $("#markAll", el).onclick = () => { prevVisit = Date.now(); store.set("lastSeen", prevVisit); render(); toast("Tout est marqué comme lu"); };
+        $("#markAll", el).onclick = () => {
+          stories().forEach((x) => { readMap[x.id] = Date.now(); });
+          (S.analyses?.items || []).forEach((a) => { readMap["a:" + a.id] = Date.now(); });
+          setRead("_", false);
+          prevVisit = Date.now(); store.set("lastSeen", prevVisit); render(); toast("Tout est marqué comme lu");
+        };
         $("#lockBtn", el).onclick = () => { store.set("pass", ""); closeSheet(); lastRaw = null; showLock(); };
       });
   }
@@ -638,8 +787,8 @@
   $$(".tab").forEach((b) => b.onclick = () => switchView(b.dataset.view));
 
   function updateBadges() {
-    const nd = stories().filter((s) => isNew(s) && s.importance >= 3).length;
-    const na = (S.analyses?.items || []).filter((a) => t(a.date) > prevVisit).length;
+    const nd = stories().filter(relevant).filter((s) => !isRead(s) && (s.importance || 0) >= 3 && t(s.last) > prevVisit).length;
+    const na = (S.analyses?.items || []).filter((a) => !isReadA(a) && t(a.date) > prevVisit).length;
     const set = (v, n) => {
       const tab = $(`.tab[data-view="${v}"]`);
       let b = $(".badge", tab);
@@ -652,7 +801,7 @@
   }
 
   $("#btnSearch").onclick = openSearch;
-  $("#btnSaved").onclick = openSaved;
+  $("#btnSaved").onclick = () => { S.savedCat = "all"; openSaved(); };
   $("#btnSettings").onclick = openSettings;
 
   // barre du haut en verre au défilement
