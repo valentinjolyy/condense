@@ -1,5 +1,5 @@
 /* Service worker : l'app s'ouvre instantanément, même hors connexion. */
-const VERSION = "condense-v2";
+const VERSION = "condense-v3";
 const SHELL = ["./", "index.html", "app.css", "app.js", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
