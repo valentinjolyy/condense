@@ -119,7 +119,9 @@
       S.live = { stories: d.stories || [] };
       S.analyses = { items: d.analyses || [] };
       S.agenda = d.agenda || null; S.revue = d.revue || null; S.comprendre = d.comprendre || null;
-      S.meta = d.meta || {};
+      const m = d.meta || {};
+      const last = [m.updated, m.relay?.updated].filter(Boolean).sort().pop();
+      S.meta = { ...m, claude_updated: m.updated, updated: last };
       hideLock();
       render();
       return true;
@@ -472,6 +474,7 @@
       <h1 class="d-title">${esc(s.titre)}</h1>
       ${s.phrase && s.phrase !== s.titre ? `<div class="d-lead">${esc(s.phrase)}</div>` : ""}
       ${actionsBar({ id: s.id })}
+      ${s.maj_relais ? sec("Dernière info", para(s.maj_relais), true) : ""}
       ${figs(s.chiffres)}
       ${sec("Les faits", s.faits && s.faits !== s.phrase ? para(s.faits) : "")}
       ${sec("Contexte", s.contexte ? para(s.contexte) : "")}
@@ -606,9 +609,10 @@
         <div class="setting"><span>Verrouiller l'app</span><button class="pill" id="lockBtn">Verrouiller</button></div>
       </div>
       <div class="d-sec box"><h3><i></i>État du service</h3>
-        <p>Dernier passage de Claude : <b>${m.updated ? esc(ago(t(m.updated))) : "aucun pour l'instant"}</b><br>
+        <p>Relevé automatique (toutes les 15 min, même Mac éteint) : <b>${m.relay?.updated ? esc(ago(t(m.relay.updated))) : "aucun pour l'instant"}</b>${m.relay && !m.relay.ai ? ` <span class="status-ko">(IA indisponible : titres bruts)</span>` : ""}<br>
+        Dernier passage de Claude (articles complets) : <b>${m.claude_updated ? esc(ago(t(m.claude_updated))) : "aucun pour l'instant"}</b><br>
         Articles complets : ${m.full_text === false ? `<span class="status-ko">non lus au dernier passage</span> (Chrome injoignable ou déconnecté des journaux)` : m.full_text ? `<span class="status-ok">lus via ton abonnement</span>` : "inconnu"}<br>
-        L'app vérifie les nouveautés chaque minute ; Claude met à jour les données toutes les heures quand ton Mac est allumé.</p>
+        L'app vérifie les nouveautés chaque minute. Le relevé GitHub rédige le direct toutes les 15 minutes ; Claude approfondit toutes les heures quand ton Mac est allumé.</p>
         ${m.log?.length ? `<details style="margin-top:8px"><summary style="color:var(--muted);font-size:14px">Journal du dernier passage</summary><div class="logbox">${esc([].concat(m.log).join("\n"))}</div></details>` : ""}
       </div>
       <div class="d-sec"><h3><i></i>À propos</h3><p style="font-size:15px">Chaque heure, Claude relève les nouveaux articles du Monde, du Figaro et de franceinfo, lit les plus importants en entier dans ton Chrome avec ton abonnement, et rédige les synthèses. Les données sont chiffrées : sans ta phrase secrète, personne ne peut les lire. Pour ajouter une fonction, demande-le à Claude dans le projet « Application actualité ».</p></div>`,
