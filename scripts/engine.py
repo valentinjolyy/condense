@@ -73,7 +73,7 @@ MAX_ITEMS_PER_CALL = 45
 MAX_CALLS_PER_RUN = 2
 
 GEMINI_BASE = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com/v1beta")
-DEFAULT_MODELS = "gemini-2.5-flash,gemini-flash-latest,gemini-2.5-flash-lite"
+DEFAULT_MODELS = "gemini-3.8-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-flash-latest,gemini-flash-lite-latest"
 
 LOG: list[str] = []
 
@@ -268,7 +268,7 @@ def _gemini_once(model: str, key: str, prompt: str, search: bool, advanced: bool
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.25, "maxOutputTokens": max_tokens},
     }
-    if search:
+    if search and advanced:
         body["tools"] = [{"google_search": {}}]
     elif advanced:
         body["generationConfig"]["responseMimeType"] = "application/json"
