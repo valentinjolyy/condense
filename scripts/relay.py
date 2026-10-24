@@ -136,10 +136,10 @@ def main():
             st = stories.get(newmap.get(key, key))
             if not st:
                 continue
+            if isinstance(f.get("maj"), str) and f["maj"].strip() and key in stories:
+                st["maj"] = f["maj"].strip()
             if st.get("complet"):
                 # fiche rédigée par Claude sur articles complets : on ne l'écrase pas
-                if f.get("phrase"):
-                    st["maj_relais"] = f["phrase"]
                 continue
             for fld in ("titre", "phrase", "faits", "contexte", "enjeux", "a_suivre", "angles", "lieu"):
                 if isinstance(f.get(fld), str) and f[fld].strip():
@@ -161,6 +161,10 @@ def main():
         add_analysis(it) if it["kind"] == "analysis" else raw_story(it)
 
     data["seen"] = list(data["seen"]) + [i["url"] for i in fresh + skipped]
+    hors_sujet = [sid for sid, st in stories.items() if st.get("categorie") == "Sport"]
+    for sid in hors_sujet:
+        del stories[sid]
+    data["deleted"] = list(data.get("deleted", [])) + hors_sujet
     data["stories"] = list(stories.values())
     data["analyses"] = list(analyses.values())
 
