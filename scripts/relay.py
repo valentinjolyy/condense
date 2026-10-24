@@ -207,7 +207,7 @@ def main():
     daily_done = any("préparé" in l or "Agenda :" in l for l in E.LOG)
     if not fresh and not skipped and not daily_done:
         last = E.parse_iso(((data.get("meta") or {}).get("relay") or {}).get("updated"))
-        if last and last > now - timedelta(minutes=60):
+        if last and last > now - timedelta(minutes=60) and not os.environ.get("RELAY_PING"):
             E.log("Rien de nouveau : pas de publication")
             print("\n".join(E.LOG[-3:]))
             return
