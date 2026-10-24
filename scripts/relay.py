@@ -206,9 +206,18 @@ def main():
 
     daily_done = any("préparé" in l or "Agenda :" in l for l in E.LOG)
     if not fresh and not skipped and not daily_done:
-        E.log("Rien de nouveau : pas de publication")
-        print("\n".join(E.LOG[-3:]))
-        return
+        last = E.parse_iso(((data.get("meta") or {}).get("relay") or {}).get("updated"))
+        if last and last > now - timedelta(minutes=60):
+            E.log("Rien de nouveau : pas de publication")
+            print("\n".join(E.LOG[-3:]))
+            return
+        # battement de cœur horaire : vérifie que l'IA répond et met à jour l'état
+        try:
+            E.gemini('Réponds avec ce JSON exact : {"ok": true}', max_tokens=200)
+            E.log("Rien de nouveau ; IA opérationnelle")
+        except E.AIUnavailable as e:
+            ai_ok = False
+            E.log(f"Rien de nouveau ; IA indisponible : {e}")
     meta = data.get("meta") or {}
     meta["relay"] = {"updated": E.iso(now), "ai": ai_ok, "model": os.environ.get("CONDENSE_LAST_MODEL", ""), "log": E.LOG[-8:]}
     data["meta"] = meta
