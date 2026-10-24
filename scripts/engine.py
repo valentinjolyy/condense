@@ -355,22 +355,27 @@ NOUVEAUX ARTICLES À TRAITER :
 
 Tâche. Pour CHAQUE nouvel article, décide :
 - "story": rattacher à un sujet existant (son id) ou à un nouveau sujet ("new1", "new2"...).
-  Regroupe agressivement : un même événement couvert par Le Monde, Le Figaro et franceinfo = UN sujet.
+  UN SEUL sujet par événement : toutes les dépêches, suites, réactions, directs et bilans d'un même
+  événement (une mobilisation, un procès, une crise, un scrutin, un attentat) vont dans le même sujet,
+  existant de préférence. Ne crée jamais deux sujets pour le même événement.
 - "analyse": c'est une tribune, un éditorial, une chronique, une analyse, un décryptage, un entretien
   d'opinion (tous les articles des rubriques idées/opinion en font partie).
-- "skip": contenu sans intérêt informatif (jeux, horoscope, recettes, promotions, programmes TV,
-  pages de services, bons plans).
+- "skip": tout ce qui ne relève pas de l'actualité politique, internationale, économique, sociale
+  d'intérêt général, judiciaire majeure, environnementale ou scientifique. Donc skip : sport (résultats,
+  matchs, transferts, compétitions, sauf enjeu politique ou économique national), people, divertissement,
+  séries, programmes TV, mode, gastronomie, voyages, consommation, bons plans, jeux, horoscope,
+  faits divers sans portée nationale, pages de services.
 
 Pour chaque NOUVEAU sujet, et pour chaque sujet EXISTANT qui reçoit des informations nouvelles
 (nouveau bilan, rebondissement, réaction majeure), rédige la fiche complète. Utilise la recherche
 web pour vérifier et compléter les faits clés (bilan, chiffres, noms, votes).
 
-- "titre": 4 à 9 mots, style titre de presse.
-- "phrase": UNE phrase autonome qui donne l'information complète, avec les faits précis
+- "titre": 4 à 9 mots, style titre de presse (affiché seulement dans la fiche).
+- "phrase": c'est ce que le lecteur voit dans le fil : UNE phrase autonome qui donne l'information complète, avec les faits précis
   (qui, quoi, où, combien). Exemple de niveau attendu : « Une fusillade à Trappes (Yvelines) a fait
   3 morts et 2 blessés graves dans la nuit de lundi à mardi ; le suspect, un homme de 24 ans, a été
   interpellé et le parquet de Versailles a ouvert une enquête pour assassinats. »
-- "faits": 2 à 4 phrases, l'essentiel factuel et récent.
+- "faits": 2 à 4 phrases qui AJOUTENT des faits absents de "phrase" (ne répète jamais "phrase").
 - "contexte": 2 à 4 phrases : ce qui a précédé, le cadre (juridique, politique, diplomatique).
 - "enjeux": 1 à 3 phrases : pourquoi c'est important, conséquences possibles, lignes de clivage.
 - "chiffres": 0 à 4 objets {{"valeur": "3", "libelle": "morts"}} (seulement des chiffres sûrs).
@@ -380,6 +385,8 @@ web pour vérifier et compléter les faits clés (bilan, chiffres, noms, votes).
 - "importance": 1 à 5 (5 = événement majeur, une des deux journaux ; 4 = important pour un acteur
   politique ; 3 = notable ; 2 = secondaire ; 1 = anecdotique).
 - "lieu": pays ou ville principale (ou "").
+- "maj": pour un sujet EXISTANT qui reçoit du nouveau, UNE phrase qui dit seulement ce qui est nouveau
+  (nouveau bilan, décision, réaction) ; "" pour un nouveau sujet.
 
 Pour chaque article "analyse", donne : "type" (Tribune, Éditorial, Chronique, Analyse, Décryptage,
 Entretien, Enquête), "auteur" (nom et qualité si connus, sinon ""), "these" (UNE phrase : la thèse
@@ -391,7 +398,7 @@ Réponds avec ce JSON exact :
             {{"item": "id_article", "decision": "analyse"}}, {{"item": "id_article", "decision": "skip"}}],
  "stories": [{{"id": "id_existant_ou_newN", "titre": "", "phrase": "", "faits": "", "contexte": "",
               "enjeux": "", "chiffres": [], "a_suivre": "", "angles": "", "categorie": "",
-              "importance": 3, "lieu": ""}}],
+              "importance": 3, "lieu": "", "maj": ""}}],
  "analyses": [{{"item": "id_article", "type": "", "auteur": "", "these": "", "theme": ""}}]
 }}"""
 
@@ -609,12 +616,13 @@ ARTICLES (Le Monde, Le Figaro, franceinfo) :
 {items}
 
 Consignes :
-- "essentiel" : 4 à 6 phrases qui disent ce qu'il faut absolument savoir ce matin.
+- "essentiel" : liste de 4 à 6 objets {{"titre": "titre de l'actualité", "texte": "1 à 2 phrases précises"}},
+  ce qu'il faut absolument savoir ce matin, sans sport ni divertissement.
 - Organise en rubriques dans cet ordre si elles ont du contenu : France, International, Économie,
-  Société, Planète, Culture & Idées, Sport.
+  Société, Planète, Sciences, Idées. Pas de rubrique Sport ni divertissement.
 - Dans chaque rubrique, "sujets" = les sujets principaux (regroupe les articles des deux journaux
   sur un même sujet). Pour chacun :
-  "titre" (titre de presse), "synthese" (5 à 8 phrases denses : faits, chiffres, acteurs, contexte ;
+  "titre" (titre de presse), "resume" (2 à 3 phrases, affiché sous le titre), "synthese" (5 à 8 phrases denses : faits, chiffres, acteurs, contexte ;
   vérifie avec la recherche web), "monde" (une phrase : ce que Le Monde apporte ou son angle, "" s'il
   ne traite pas le sujet), "figaro" (idem pour Le Figaro), "items" (ids de TOUS les articles liés).
 - "breves" = les petits articles restants de la rubrique, une phrase informative chacun, avec "items".
@@ -623,8 +631,8 @@ Consignes :
 
 JSON attendu :
 {{
- "essentiel": "",
- "rubriques": [{{"nom": "France", "sujets": [{{"titre": "", "synthese": "", "monde": "", "figaro": "", "items": []}}],
+ "essentiel": [{{"titre": "", "texte": ""}}],
+ "rubriques": [{{"nom": "France", "sujets": [{{"titre": "", "resume": "", "synthese": "", "monde": "", "figaro": "", "items": []}}],
                 "breves": [{{"titre": "", "phrase": "", "items": []}}]}}]
 }}"""
 
