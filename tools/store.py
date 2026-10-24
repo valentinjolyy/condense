@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 ITER = 250_000
 PATH = "data/bundle.json"
-EMPTY = {"stories": [], "analyses": [], "agenda": {}, "revue": {}, "comprendre": {}, "meta": {}, "seen": []}
+EMPTY = {"stories": [], "analyses": [], "agenda": {}, "revue": {}, "comprendre": {}, "meta": {}, "seen": [], "deleted": []}
 
 
 def key(passphrase: str, salt: bytes) -> bytes:
@@ -71,13 +71,16 @@ def merge(local: dict, remote: dict) -> dict:
         liens = list(best.get("liens", [])) + [l for l in other.get("liens", []) if l.get("url") not in urls]
         best = dict(best, liens=liens, last=max(_t(o.get("last")), _t(s.get("last"))))
         by[sid] = best
-    out["stories"] = sorted([s for s in by.values() if _t(s.get("last")) >= lim_s], key=lambda s: _t(s.get("last")), reverse=True)
+    deleted = list(dict.fromkeys(list(remote.get("deleted", [])) + list(local.get("deleted", []))))[-3000:]
+    out["deleted"] = deleted
+    dset = set(deleted)
+    out["stories"] = sorted([s for s in by.values() if _t(s.get("last")) >= lim_s and s.get("id") not in dset], key=lambda s: _t(s.get("last")), reverse=True)
     ana = {}
     for a in remote.get("analyses", []) + local.get("analyses", []):
         if a.get("id"):
             o = ana.get(a["id"])
             ana[a["id"]] = a if o is None or len(_t(a.get("these"))) >= len(_t(o.get("these"))) else o
-    out["analyses"] = sorted([a for a in ana.values() if _t(a.get("date")) >= lim_a], key=lambda a: _t(a.get("date")), reverse=True)
+    out["analyses"] = sorted([a for a in ana.values() if _t(a.get("date")) >= lim_a and a.get("id") not in dset], key=lambda a: _t(a.get("date")), reverse=True)
     seen = list(dict.fromkeys(list(remote.get("seen", [])) + list(local.get("seen", []))))
     out["seen"] = seen[-1500:]
     # Pages du jour : la plus récente ; à date égale, celle de Claude plutôt que celle du relais
