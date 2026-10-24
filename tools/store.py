@@ -147,7 +147,7 @@ def main():
     local = json.load(open(path))
     for attempt in range(4):
         bundle, sha = current(repo, token)
-        data = merge(local, decrypt(bundle, pw)) if bundle else local
+        data = merge(local, decrypt(bundle, pw)) if bundle and not os.environ.get("CONDENSE_REPLACE") else local
         payload = json.dumps(encrypt(data, pw)).encode()
         body = {"message": f"Mise à jour {time.strftime('%Y-%m-%d %H:%M')} UTC", "branch": "main",
                 "content": base64.b64encode(payload).decode()}
