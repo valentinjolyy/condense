@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "4,19,34,49 * * * *"   # toutes les 15 minutes
   workflow_dispatch:
+    inputs:
+      ping:
+        description: "Forcer une vérification de l'IA"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -30,6 +35,8 @@ jobs:
           CONDENSE_PASS: ${{ secrets.CONDENSE_PASS }}
           CONDENSE_REPO: ${{ github.repository }}
           CONDENSE_TOKEN: ${{ github.token }}
+          RELAY_PING: ${{ github.event.inputs.ping }}
+          GEMINI_MODELS: ${{ vars.GEMINI_MODELS }}
         run: python scripts/relay.py
       - name: Republier le site
         if: hashFiles('published.flag') != ''
