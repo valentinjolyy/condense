@@ -1,5 +1,5 @@
 """Teste les flux candidats de « Pour aller plus loin » et écrit le résultat dans flux-test.txt."""
-import re, requests, feedparser
+import re, os, base64, json, requests, feedparser
 from urllib.parse import urljoin
 UA = {"User-Agent": "Mozilla/5.0 (compatible; LeCondense/1.0)"}
 SITES = {
@@ -30,7 +30,7 @@ SITES = {
  "Le Figaro Vox": ["https://www.lefigaro.fr/rss/figaro_vox.xml"],
 }
 out = []
-for name, urls in SITES.items():
+def test(name, urls):
     found = []
     for u in urls:
         try:
@@ -39,9 +39,8 @@ for name, urls in SITES.items():
             out.append(f"{name} | {u} | ERREUR {e.__class__.__name__}"); continue
         f = feedparser.parse(r.content)
         if f.entries:
-            found.append(u)
             out.append(f"{name} | {u} | {r.status_code} | {len(f.entries)} articles | ex: {f.entries[0].get('title','')[:80]}")
-            break
+            return u
         links = re.findall(r'<link[^>]+type="application/(?:rss|atom)\+xml"[^>]*>', r.text or "")
         hrefs = [urljoin(u, h) for l in links for h in re.findall(r'href="([^"]+)"', l)]
         out.append(f"{name} | {u} | {r.status_code} | pas un flux | découverts: {hrefs[:4]}")
@@ -50,11 +49,23 @@ for name, urls in SITES.items():
                 f2 = feedparser.parse(requests.get(h, headers=UA, timeout=20).content)
                 out.append(f"{name} | {h} | découvert | {len(f2.entries)} articles | ex: {(f2.entries[0].get('title','')[:80] if f2.entries else '')}")
                 if f2.entries:
-                    found.append(h); break
+                    return h
             except Exception as e:
                 out.append(f"{name} | {h} | ERREUR {e.__class__.__name__}")
-        if found:
-            break
-    out.append(f"=> {name}: {found[0] if found else 'AUCUN FLUX'}")
-open("flux-test.txt", "w").write("\n".join(out))
-print("\n".join(out))
+    return None
+for name, urls in SITES.items():
+    try:
+        res = test(name, urls)
+    except Exception as e:
+        res = None; out.append(f"{name} | ERREUR {e}")
+    out.append(f"=> {name}: {res or 'AUCUN FLUX'}")
+txt = "\n".join(out)
+print(txt)
+repo, tok = os.environ["GITHUB_REPOSITORY"], os.environ["GH_TOKEN"]
+H = {"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json"}
+url = f"https://api.github.com/repos/{repo}/contents/data/flux-test.txt"
+g = requests.get(url, headers=H)
+body = {"message": "Test des flux", "content": base64.b64encode(txt.encode()).decode()}
+if g.ok:
+    body["sha"] = g.json()["sha"]
+print(requests.put(url, headers=H, json=body).status_code)
