@@ -54,7 +54,14 @@ def merge(local: dict, remote: dict) -> dict:
     lim_s = (now - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
     lim_a = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     out = dict(remote)
-    out.update({k: v for k, v in local.items() if k not in ("stories", "analyses", "seen", "meta", "agenda", "revue", "comprendre")})
+    out.update({k: v for k, v in local.items() if k not in ("stories", "analyses", "seen", "meta", "agenda", "revue", "comprendre", "journal", "deleted")})
+    # Journal : le plus récent ; édition par édition
+    jl, jr = local.get("journal") or {}, remote.get("journal") or {}
+    if jl or jr:
+        newer, older = (jl, jr) if _t(jl.get("updated")) >= _t(jr.get("updated")) else (jr, jl)
+        eds = dict(older.get("editions") or {})
+        eds.update(newer.get("editions") or {})
+        out["journal"] = {**older, **newer, "editions": eds}
     # Sujets : priorité à la fiche rédigée à partir des articles complets, sinon la plus récente
     by = {}
     for s in remote.get("stories", []) + local.get("stories", []):
@@ -98,6 +105,10 @@ def merge(local: dict, remote: dict) -> dict:
         for k in ("updated", "full_text", "log"):
             if k in best:
                 meta[k] = best[k]
+    newer_meta = lm if _t((local.get("journal") or {}).get("updated")) >= _t((remote.get("journal") or {}).get("updated")) else rm
+    for k in ("journal_urls", "journal_log"):
+        if k in newer_meta:
+            meta[k] = newer_meta[k]
     out["meta"] = meta
     return out
 
