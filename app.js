@@ -133,7 +133,7 @@
       lastRaw = b;
       S.live = { stories: d.stories || [] };
       S.analyses = { items: d.analyses || [] };
-      S.agenda = d.agenda || null; S.revue = d.revue || null; S.journal = d.journal || null;
+      S.agenda = d.agenda || null; S.revue = d.revue || null; S.journal = d.journal || null; S.plusloin = d.plusloin || []; S.ple = d.plusloin_editions || {};
       const m = d.meta || {};
       const last = [m.updated, m.relay?.updated].filter(Boolean).sort().pop();
       S.meta = { ...m, claude_updated: m.updated, updated: last };
@@ -172,6 +172,7 @@
     renderJournal();
     renderDirect();
     renderAnalyses();
+    renderPlusLoin();
     updateBadges();
   }
 
@@ -458,6 +459,74 @@
       });
     });
     return html;
+  }
+
+  // ----- Pour aller plus loin -----
+  const isReadP = (a) => !!readMap["p:" + a.id];
+  const accClass = (x) => x === "abonnés" ? "abonnes" : x;
+  const accLabel = (x) => x === "gratuit" ? "Gratuit" : x === "partiel" ? "En partie gratuit" : "Abonnés";
+  function plCard(a, i) {
+    const r = isReadP(a), sv = saved.some((x) => x.id === a.id);
+    return `<div class="swipe ${r ? "is-read" : ""}" style="animation-delay:${Math.min(i, 10) * 35}ms"><div class="swipe-bg"><span>${r ? "Remettre en non lu" : "Lu ✓"}</span></div>
+      <a class="pl ${r ? "read" : ""}" href="${esc(a.url)}" target="_blank" rel="noopener" data-id="${esc(a.id)}">
+        <div class="top"><span class="srcname">${esc(a.source)}</span><span class="acc ${accClass(a.acces)}">${accLabel(a.acces)}</span>${a.genre ? `<span class="genre">${esc(a.genre)}</span>` : ""}<span>· ${esc(whenLabel(a.date))}</span></div>
+        <div class="ttl">${esc(a.titre)}</div>
+        ${a.auteur ? `<div class="aut">${esc(a.auteur)}</div>` : ""}
+        ${a.these ? `<div class="th">${esc(a.these)}</div>` : ""}
+      </a><button class="art-save ${sv ? "on" : ""}" data-save="${esc(a.id)}" aria-label="Lire plus tard" style="z-index:2">${ICON.save}</button></div>`;
+  }
+  function renderPlusLoin() {
+    const el = $("#view-plusloin");
+    const items = S.plusloin || [];
+    let html = hero("Pour aller plus loin", "Revues, think tanks et presse d'idées");
+    // Éditions hebdomadaires (La Tribune Dimanche…)
+    Object.entries(S.ple || {}).sort((a, b) => t(b[1].parution || b[1].updated) - t(a[1].parution || a[1].updated)).forEach(([name, ed]) => {
+      if (!ed?.rubriques?.length && !ed?.une?.length) return;
+      const open = S.pleOpen === name;
+      const rows = (list) => `<div class="arts">${list.map((a) => `<div class="art"><a href="${esc(a.url || "#")}" target="_blank" rel="noopener">${a.genre && a.genre !== "Article" ? `<div class="genre">${esc(a.genre)}</div>` : ""}<div class="at">${esc(a.titre)}</div>${a.resume ? `<div class="ar">${esc(a.resume)}</div>` : ""}${a.auteur ? `<div class="au">${esc(a.auteur)}</div>` : ""}</a></div>`).join("")}</div>`;
+      html += `<div class="ple ${open ? "open" : ""}"><div class="k">Le sommaire</div><div class="h">${esc(name)}</div><div class="s">${esc(ed.label || "")}</div>
+        <button data-ple="${esc(name)}">${open ? "Masquer le sommaire" : "Voir le sommaire"} ${ICON.chev}</button>
+        ${open ? (ed.une?.length ? `<div class="rub">À la une</div>${rows(ed.une)}` : "") + (ed.rubriques || []).map((r) => r.articles?.length ? `<div class="rub">${esc(r.nom)}</div>${rows(r.articles)}` : "").join("") : ""}</div>`;
+    });
+    if (!items.length) {
+      el.innerHTML = html + `<div class="empty"><b>La sélection arrive</b>Les articles de fond du Grand Continent, de Telos, de l'Institut Montaigne, de L'Opinion, de Challenges et d'autres apparaissent au fil de leur publication.</div>`;
+      bindPle(el);
+      return;
+    }
+    const unread = items.filter((a) => !isReadP(a));
+    const themes = [...new Set(items.map((a) => a.theme).filter(Boolean))];
+    const f = S.plFilter || "all";
+    html += `<div class="chips" id="plChips">${[["all", "Tout"], ["gratuit", "Gratuits"], ...themes.map((x) => [x, x])].map(([k, l]) =>
+      `<button class="chip ${f === k ? "on" : ""}" data-k="${esc(k)}">${esc(l)}</button>`).join("")}</div>`;
+    const filt = (l) => l.filter((a) => f === "all" || (f === "gratuit" ? a.acces === "gratuit" : a.theme === f));
+    const list = filt(unread).sort((a, b) => (b.note || 0) - (a.note || 0) || t(b.date) - t(a.date));
+    const top = list.filter((a) => (a.note || 0) >= 3), rest = list.filter((a) => (a.note || 0) < 3);
+    if (top.length) html += `<div class="group-label">Incontournables</div>` + top.map(plCard).join("");
+    let lastG = null;
+    rest.sort((a, b) => t(b.date) - t(a.date)).forEach((a, i) => {
+      const g = dayGroup(t(a.date));
+      if (g !== lastG) { html += `<div class="group-label">${esc(g)}</div>`; lastG = g; }
+      html += plCard(a, i);
+    });
+    if (!list.length) html += `<div class="empty"><b>Écran propre</b>Les nouveaux textes apparaîtront ici.</div>`;
+    const readList = filt(items.filter(isReadP));
+    if (readList.length) {
+      html += `<button class="read-toggle ${S.showReadP ? "open" : ""}" id="readToggleP"><span>Déjà lus</span><span class="c">${readList.length}</span>${ICON.chev}</button>`;
+      if (S.showReadP) html += `<div class="read-feed">${readList.slice(0, 150).map(plCard).join("")}</div>`;
+    }
+    el.innerHTML = html;
+    bindPle(el);
+    $$("#plChips .chip", el).forEach((b) => b.onclick = () => { S.plFilter = b.dataset.k; renderPlusLoin(); });
+    $("#readToggleP", el)?.addEventListener("click", () => { S.showReadP = !S.showReadP; const y = window.scrollY; renderPlusLoin(); window.scrollTo(0, y); });
+    attachSwipe(el, ".pl", (id) => { setRead("p:" + id, !readMap["p:" + id]); quietRender(); });
+    $$("[data-save]", el).forEach((b) => b.onclick = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const a = items.find((x) => x.id === b.dataset.save);
+      if (a) toggleSave({ id: a.id, kind: "analyse", titre: a.titre, sub: `${a.source}`, url: a.url }, () => { const y = window.scrollY; renderPlusLoin(); window.scrollTo(0, y); });
+    });
+  }
+  function bindPle(el) {
+    $$("[data-ple]", el).forEach((b) => b.onclick = () => { S.pleOpen = S.pleOpen === b.dataset.ple ? null : b.dataset.ple; const y = window.scrollY; renderPlusLoin(); window.scrollTo(0, y); });
   }
 
   // ----- Analyses -----
@@ -829,7 +898,7 @@
   }
 
   // ---------- Navigation ----------
-  const VIEWS = ["journal", "direct", "analyses"];
+  const VIEWS = ["journal", "direct", "analyses", "plusloin"];
   function switchView(v) {
     if (S.view === v) { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     S.view = v;
