@@ -313,8 +313,8 @@ main { max-width: 760px; margin: 0 auto; padding: calc(var(--safe-top) + 52px) 0
 /* ---------- Barre d'onglets ---------- */
 .tabbar {
   position: fixed; left: 12px; right: 12px; bottom: calc(var(--safe-bottom) + 10px); z-index: 40;
-  max-width: 400px; margin: 0 auto; height: 64px;
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  max-width: 460px; margin: 0 auto; height: 64px;
+  display: grid; grid-template-columns: repeat(4, 1fr);
   background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(22px); backdrop-filter: saturate(180%) blur(22px);
   border-radius: 24px; box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgba(0,0,0,.12);
 }
@@ -323,7 +323,7 @@ main { max-width: 760px; margin: 0 auto; padding: calc(var(--safe-top) + 52px) 0
 .tab.active { color: var(--ink); }
 .tab.active svg { transform: translateY(-1px) scale(1.06); }
 .tab:active svg { transform: scale(.85); }
-.tab-indicator { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / 3); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); transition: transform .45s var(--spring); }
+.tab-indicator { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / 4); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); transition: transform .45s var(--spring); }
 .tab .badge { position: absolute; top: 8px; right: calc(50% - 20px); min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 800; display: grid; place-items: center; padding: 0 4px; }
 
 /* ---------- Tirer pour actualiser ---------- */
@@ -463,3 +463,28 @@ main { max-width: 760px; margin: 0 auto; padding: calc(var(--safe-top) + 52px) 0
 .ed-seg { background: var(--bg); padding-block: 8px; margin-top: 14px; box-shadow: 0 8px 12px -10px var(--bg); }
 #view-journal .essentiel { margin-top: 14px; }
 .ed-seg button small { font-size: 11px; }
+
+/* ---------- Pour aller plus loin ---------- */
+.pl { display: block; background: var(--card); border-radius: var(--radius); padding: 15px 52px 15px 16px; box-shadow: var(--shadow); position: relative; }
+.pl .top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.pl .srcname { font-weight: 750; color: var(--ink-2); }
+.pl .acc { font-size: 10.5px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; padding: 2px 6px; border-radius: 5px; }
+.pl .acc.gratuit { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
+.pl .acc.partiel { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.pl .acc.abonnes { color: var(--muted); background: var(--card-2); }
+.pl .genre { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--accent); }
+.pl .ttl { font-family: var(--serif); font-weight: 600; font-size: calc(18px * var(--fs)); line-height: 1.25; margin-top: 7px; }
+.pl .aut { font-size: 13px; color: var(--ink-2); margin-top: 5px; font-weight: 550; }
+.pl .th { font-size: 14.5px; color: var(--muted); margin-top: 5px; line-height: 1.42; }
+.pl.read { background: var(--card-2); box-shadow: none; }
+.pl.read .ttl { color: var(--muted); }
+.pl .art-save { top: 10px; }
+.ple { background: var(--ink); color: var(--bg); border-radius: 22px; padding: 18px; margin-bottom: 14px; }
+.ple .k { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
+.ple .h { font-family: var(--serif); font-size: 24px; font-weight: 600; margin-top: 4px; }
+.ple .s { font-size: 14px; opacity: .8; margin-top: 2px; }
+.ple button { margin-top: 12px; color: var(--bg); font-weight: 650; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; }
+.ple button svg { width: 16px; height: 16px; transition: transform .3s var(--spring); }
+.ple.open button svg { transform: rotate(90deg); }
+.ple .arts { margin-top: 12px; color: var(--ink); }
+.ple .rub { font-family: var(--serif); font-size: 18px; font-weight: 600; margin: 14px 2px 6px; color: var(--bg); }
