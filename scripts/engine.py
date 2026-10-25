@@ -383,7 +383,8 @@ web pour vérifier et compléter les faits clés (bilan, chiffres, noms, votes).
 - "angles": si Le Monde et Le Figaro traitent le sujet différemment, une phrase qui le dit, sinon "".
 - "categorie": une parmi {categories}.
 - "importance": 1 à 5 (5 = événement majeur, une des deux journaux ; 4 = important pour un acteur
-  politique ; 3 = notable ; 2 = secondaire ; 1 = anecdotique).
+  politique ; 3 = notable ; 2 = secondaire ; 1 = anecdotique). Sois sévère : seuls les sujets 3 à 5
+  sont affichés, et une journée normale ne compte qu'une quinzaine de sujets 3 ou plus.
 - "lieu": pays ou ville principale (ou "").
 - "maj": pour un sujet EXISTANT qui reçoit du nouveau, UNE phrase qui dit seulement ce qui est nouveau
   (nouveau bilan, décision, réaction) ; "" pour un nouveau sujet.
