@@ -54,7 +54,7 @@ def merge(local: dict, remote: dict) -> dict:
     lim_s = (now - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
     lim_a = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     out = dict(remote)
-    out.update({k: v for k, v in local.items() if k not in ("stories", "analyses", "seen", "meta", "agenda", "revue", "comprendre", "journal", "deleted")})
+    out.update({k: v for k, v in local.items() if k not in ("stories", "analyses", "seen", "meta", "agenda", "revue", "comprendre", "journal", "deleted", "plusloin", "seen_pl", "plusloin_editions")})
     # Journal : le plus récent ; édition par édition
     jl, jr = local.get("journal") or {}, remote.get("journal") or {}
     if jl or jr:
@@ -90,6 +90,20 @@ def merge(local: dict, remote: dict) -> dict:
     out["analyses"] = sorted([a for a in ana.values() if _t(a.get("date")) >= lim_a and a.get("id") not in dset], key=lambda a: _t(a.get("date")), reverse=True)
     seen = list(dict.fromkeys(list(remote.get("seen", [])) + list(local.get("seen", []))))
     out["seen"] = seen[-1500:]
+    # Pour aller plus loin : union par id, 8 jours
+    lim_p = (now - timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    pls = {}
+    for a in remote.get("plusloin", []) + local.get("plusloin", []):
+        if a.get("id"):
+            pls[a["id"]] = a
+    out["plusloin"] = sorted([a for a in pls.values() if _t(a.get("date")) >= lim_p and a.get("id") not in dset], key=lambda a: _t(a.get("date")), reverse=True)[:300]
+    out["seen_pl"] = list(dict.fromkeys(list(remote.get("seen_pl", [])) + list(local.get("seen_pl", []))))[-3000:]
+    # Éditions hebdomadaires (La Tribune Dimanche…) : la plus récente par titre
+    ple = dict(remote.get("plusloin_editions") or {})
+    for k, v in (local.get("plusloin_editions") or {}).items():
+        if _t(v.get("updated")) >= _t((ple.get(k) or {}).get("updated")):
+            ple[k] = v
+    out["plusloin_editions"] = ple
     # Pages du jour : la plus récente ; à date égale, celle de Claude plutôt que celle du relais
     for k in ("agenda", "revue", "comprendre"):
         cands = [x for x in (remote.get(k) or {}, local.get(k) or {}) if x]
