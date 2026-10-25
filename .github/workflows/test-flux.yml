@@ -1,0 +1,22 @@
+name: Test des flux
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q feedparser requests
+      - run: python scripts/test_flux.py
+      - name: Enregistrer le résultat
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA=$(gh api "repos/${{ github.repository }}/contents/data/flux-test.txt" --jq .sha 2>/dev/null || true)
+          gh api -X PUT "repos/${{ github.repository }}/contents/data/flux-test.txt" -f message="Test des flux" -f content="$(base64 -w0 flux-test.txt)" ${SHA:+-f sha=$SHA}
