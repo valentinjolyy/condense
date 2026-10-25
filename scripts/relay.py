@@ -63,6 +63,108 @@ def consolidate(stories: dict) -> list:
     return removed
 
 
+# ---- Pour aller plus loin : revues, think tanks, presse d'idées
+PLUSLOIN = [
+    # (source, flux, accès)
+    ("Le Grand Continent", "https://legrandcontinent.eu/fr/feed/", "gratuit"),
+    ("Telos", "https://www.telos-eu.com/fr/rss.xml", "gratuit"),
+    ("The Conversation", "https://theconversation.com/fr/articles.atom", "gratuit"),
+    ("Institut Montaigne", "https://www.institutmontaigne.org/rss.xml", "gratuit"),
+    ("Fondation Jean-Jaurès", "https://www.jean-jaures.org/feed/", "gratuit"),
+    ("Terra Nova", "https://tnova.fr/feed/", "gratuit"),
+    ("Le Rubicon", "https://lerubicon.org/feed/", "gratuit"),
+    ("Desk Russie", "https://desk-russie.eu/feed", "gratuit"),
+    ("Diploweb", "https://www.diploweb.com/spip.php?page=backend", "gratuit"),
+    ("Conflits", "https://www.revueconflits.com/feed/", "partiel"),
+    ("Atlantico", "https://rss.atlantico.fr", "partiel"),
+    ("Revue des Deux Mondes", "https://www.revuedesdeuxmondes.fr/feed/", "partiel"),
+    ("Esprit", "https://esprit.presse.fr/rss/news.xml", "partiel"),
+    ("Courrier international", "https://www.courrierinternational.com/feed/all/rss.xml", "abonnés"),
+    ("L'Opinion", "https://www.lopinion.fr/index.rss", "abonnés"),
+    ("Challenges", "https://www.challenges.fr/rss.xml", "abonnés"),
+    ("L'Express", "https://www.lexpress.fr/arc/outboundfeeds/rss/idees-et-debats.xml", "abonnés"),
+    ("AOC", "https://aoc.media/feed/", "abonnés"),
+]
+
+PLUSLOIN_PROMPT = """Nous sommes le {date}. Voici de nouveaux articles de revues, think tanks et journaux d'idées.
+Le lecteur (collaborateur parlementaire, juriste, très informé) veut une sélection « pour aller plus loin » :
+uniquement des articles DE FOND, d'ANALYSE ou d'OPINION utiles pour comprendre le monde, la politique,
+l'économie, les idées, et garder un regard critique. Écarte : brèves, dépêches, actualité chaude sans analyse,
+sport, culture divertissante, consommation, vie pratique, publicité, pages de service.
+Pour les sources à accès « abonnés », ne garde que les textes vraiment importants (note 3).
+
+ARTICLES :
+{items}
+
+Pour chaque article à garder : {{"item": id, "genre": Analyse | Tribune | Entretien | Note | Étude | Portrait | Essai | Enquête | Éditorial | Chronique,
+"auteur": nom et qualité si connus, "these": UNE phrase précise qui dit la thèse ou l'apport, "theme": International | Politique | Économie | Société | Idées | Europe | Défense | Sciences,
+"note": 1 à 3 (3 = incontournable)}}.
+JSON attendu : {{"garder": [ ... ]}}  (les articles non listés sont écartés)"""
+
+
+def plus_loin(data, now, ai_ok):
+    """Ajoute les nouveaux articles de fond des revues et think tanks. Retourne le nombre ajouté."""
+    seen = set(data.get("seen_pl", []))
+    pl = {a["id"]: a for a in data.get("plusloin", [])}
+    fresh = []
+    for source, url, acces in PLUSLOIN:
+        try:
+            r = E.requests.get(url, headers={"User-Agent": E.UA}, timeout=25)
+            feed = E.feedparser.parse(r.content)
+        except Exception as e:
+            E.log(f"Plus loin : {source} en échec ({e.__class__.__name__})")
+            continue
+        for e in feed.entries[:25]:
+            link = e.get("link")
+            if not link:
+                continue
+            link = E.norm_url(link)
+            if link in seen:
+                continue
+            pub = None
+            for k in ("published_parsed", "updated_parsed"):
+                if e.get(k):
+                    from datetime import datetime, timezone
+                    pub = datetime(*e[k][:6], tzinfo=timezone.utc)
+                    break
+            if pub and pub < now - timedelta(days=4):
+                seen.add(link)
+                continue
+            fresh.append({"id": "p" + E.make_id(link), "source": source, "acces": acces, "url": link,
+                          "titre": E.clean_text(e.get("title"), 300),
+                          "chapo": E.clean_text(e.get("summary") or e.get("description"), 350),
+                          "auteur": E.clean_text(e.get("author"), 80) if e.get("author") else "",
+                          "date": E.iso(pub or now)})
+    added = 0
+    if fresh and ai_ok:
+        fresh = fresh[:70]
+        lines = "\n".join(f"- id={i['id']} | {i['source']} (accès {i['acces']}) | {i['titre']} :: {i['chapo'][:260]}" for i in fresh)
+        try:
+            res = E.gemini(PLUSLOIN_PROMPT.format(date=E.fr_date(now), items=lines), max_tokens=12000)
+        except E.AIUnavailable as e:
+            E.log(f"Plus loin : IA indisponible ({e})")
+            data["plusloin"] = list(pl.values())
+            return 0
+        by = {i["id"]: i for i in fresh}
+        for g in res.get("garder", []):
+            it = by.get(g.get("item"))
+            if not it:
+                continue
+            note = int(g.get("note") or 1)
+            if it["acces"] == "abonnés" and note < 3:
+                continue
+            pl[it["id"]] = {**it, "genre": g.get("genre") or "Analyse", "auteur": g.get("auteur") or it["auteur"],
+                            "these": g.get("these") or it["chapo"], "theme": g.get("theme") or "", "note": note}
+            added += 1
+        seen.update(i["url"] for i in fresh)
+        data["_pl_proc"] = len(fresh)
+    lim = E.iso(now - timedelta(days=8))
+    data["plusloin"] = sorted([a for a in pl.values() if a["date"] >= lim], key=lambda a: a["date"], reverse=True)[:250]
+    data["seen_pl"] = list(seen)[-3000:]
+    E.log(f"Plus loin : {len(fresh)} nouveaux articles lus, {added} retenus")
+    return added
+
+
 def main():
     repo, token, pw = (os.environ[k] for k in ("CONDENSE_REPO", "CONDENSE_TOKEN", "CONDENSE_PASS"))
     now = E.now_utc()
@@ -205,7 +307,10 @@ def main():
     data["stories"] = list(stories.values())
     data["analyses"] = list(analyses.values())
 
-    daily_done = bool(hors_sujet)
+    pl_added = plus_loin(data, now, ai_ok)
+    daily_done = bool(hors_sujet) or pl_added > 0
+    if data.pop("_pl_proc", 0):
+        daily_done = True
     if not fresh and not skipped and not daily_done:
         last = E.parse_iso(((data.get("meta") or {}).get("relay") or {}).get("updated"))
         if last and last > now - timedelta(minutes=60) and not os.environ.get("RELAY_PING"):
