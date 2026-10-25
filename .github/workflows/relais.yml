@@ -2,7 +2,7 @@ name: Relais du Condensé
 
 on:
   schedule:
-    - cron: "4,19,34,49 * * * *"   # toutes les 15 minutes
+    - cron: "4 * * * *"   # toutes les heures (quota gratuit de Gemini)
   workflow_dispatch:
     inputs:
       ping:
