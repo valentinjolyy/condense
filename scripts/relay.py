@@ -135,33 +135,22 @@ def plus_loin(data, now, ai_ok):
                           "chapo": E.clean_text(e.get("summary") or e.get("description"), 350),
                           "auteur": E.clean_text(e.get("author"), 80) if e.get("author") else "",
                           "date": E.iso(pub or now)})
-    added = 0
-    if fresh and ai_ok:
-        fresh = fresh[:70]
-        lines = "\n".join(f"- id={i['id']} | {i['source']} (accès {i['acces']}) | {i['titre']} :: {i['chapo'][:260]}" for i in fresh)
-        try:
-            res = E.gemini(PLUSLOIN_PROMPT.format(date=E.fr_date(now), items=lines), max_tokens=12000)
-        except E.AIUnavailable as e:
-            E.log(f"Plus loin : IA indisponible ({e})")
-            data["plusloin"] = list(pl.values())
-            return 0
-        by = {i["id"]: i for i in fresh}
-        for g in res.get("garder", []):
-            it = by.get(g.get("item"))
-            if not it:
-                continue
-            note = int(g.get("note") or 1)
-            if it["acces"] == "abonnés" and note < 3:
-                continue
-            pl[it["id"]] = {**it, "genre": g.get("genre") or "Analyse", "auteur": g.get("auteur") or it["auteur"],
-                            "these": g.get("these") or it["chapo"], "theme": g.get("theme") or "", "note": note}
-            added += 1
-        seen.update(i["url"] for i in fresh)
+    # La sélection et la thèse sont faites par Claude (tâche « Le journal ») : on stocke les candidats
+    cand = {c["id"]: c for c in data.get("pl_cand", [])}
+    done = set(data.get("pl_done", []))
+    for it in fresh:
+        if it["id"] not in done:
+            cand[it["id"]] = it
+    seen.update(i["url"] for i in fresh)
+    lim_c = E.iso(now - timedelta(days=4))
+    data["pl_cand"] = sorted([c for c in cand.values() if c["date"] >= lim_c], key=lambda c: c["date"], reverse=True)[:400]
+    if fresh:
         data["_pl_proc"] = len(fresh)
+    added = 0
     lim = E.iso(now - timedelta(days=8))
     data["plusloin"] = sorted([a for a in pl.values() if a["date"] >= lim], key=lambda a: a["date"], reverse=True)[:250]
     data["seen_pl"] = list(seen)[-3000:]
-    E.log(f"Plus loin : {len(fresh)} nouveaux articles lus, {added} retenus")
+    E.log(f"Plus loin : {len(fresh)} nouveaux candidats ({len(data['pl_cand'])} en attente de sélection)")
     return added
 
 
