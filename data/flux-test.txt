@@ -1,0 +1,69 @@
+L'Opinion | https://www.lopinion.fr/rss | 404 | pas un flux | découverts: ['https://www.lopinion.fr/utiles/404.rss']
+L'Opinion | https://www.lopinion.fr/utiles/404.rss | découvert | 0 articles | ex: 
+L'Opinion | https://www.lopinion.fr/feed | 404 | pas un flux | découverts: ['https://www.lopinion.fr/utiles/404.rss']
+L'Opinion | https://www.lopinion.fr/utiles/404.rss | découvert | 0 articles | ex: 
+L'Opinion | https://www.lopinion.fr/ | 200 | pas un flux | découverts: ['https://www.lopinion.fr/index.rss']
+L'Opinion | https://www.lopinion.fr/index.rss | découvert | 250 articles | ex: Israël : Gadi Eisenkot, pourfendeur des colons extrémistes… mais partisan des co
+=> L'Opinion: https://www.lopinion.fr/index.rss
+Le Grand Continent | https://legrandcontinent.eu/fr/feed/ | 200 | 10 articles | ex: Au Brésil, la victoire de Flávio Bolsonaro relancerait la déforestation de l’Ama
+=> Le Grand Continent: https://legrandcontinent.eu/fr/feed/
+Le Point | https://www.lepoint.fr/debats/rss.xml | 403 | pas un flux | découverts: []
+Le Point | https://www.lepoint.fr/rss.xml | 404 | pas un flux | découverts: []
+Le Point | https://www.lepoint.fr/ | 403 | pas un flux | découverts: []
+=> Le Point: AUCUN FLUX
+Challenges | https://www.challenges.fr/rss.xml | 200 | 50 articles | ex: « J’ai remis à flot un bateau qui prenait l’eau de toutes parts » : comment Thie
+=> Challenges: https://www.challenges.fr/rss.xml
+La Tribune Dimanche | https://www.latribune.fr/la-tribune-dimanche/rss | 200 | pas un flux | découverts: []
+La Tribune Dimanche | https://www.latribune.fr/rss/rubriques/la-tribune-dimanche.html | 404 | pas un flux | découverts: []
+La Tribune Dimanche | https://www.latribune.fr/la-tribune-dimanche | 200 | pas un flux | découverts: []
+La Tribune Dimanche | https://www.latribune.fr/ | 200 | pas un flux | découverts: []
+=> La Tribune Dimanche: AUCUN FLUX
+Telos | https://www.telos-eu.com/fr/rss.xml | 200 | 20 articles | ex: «Méloniser» Marine Le Pen?
+=> Telos: https://www.telos-eu.com/fr/rss.xml
+The Conversation | https://theconversation.com/fr/articles.atom | 200 | 50 articles | ex: Pour mieux anticiper les séismes en France, garder la mémoire des précédents
+=> The Conversation: https://theconversation.com/fr/articles.atom
+Institut Montaigne | https://www.institutmontaigne.org/rss.xml | 200 | 30 articles | ex: [Le monde vu d’ailleurs] - La génération Z et l’avenir du modèle européen
+=> Institut Montaigne: https://www.institutmontaigne.org/rss.xml
+Fondation Jean-Jaurès | https://www.jean-jaures.org/feed/ | 200 | 12 articles | ex: Accueil
+=> Fondation Jean-Jaurès: https://www.jean-jaures.org/feed/
+Fondapol | https://www.fondapol.org/feed/ | 200 | pas un flux | découverts: []
+Fondapol | https://www.fondapol.org/ | 200 | pas un flux | découverts: []
+=> Fondapol: AUCUN FLUX
+Ifri | https://www.ifri.org/fr/rss.xml | 403 | pas un flux | découverts: []
+Ifri | https://www.ifri.org/fr | 403 | pas un flux | découverts: []
+=> Ifri: AUCUN FLUX
+Terra Nova | https://tnova.fr/feed/ | 200 | 20 articles | ex: Immigration et emploi en France : décodage d’une radiographie manipulée
+=> Terra Nova: https://tnova.fr/feed/
+Les Échos | https://services.lesechos.fr/rss/les-echos-idees.xml | 403 | pas un flux | découverts: []
+Les Échos | https://www.lesechos.fr/rss/rss_idees_debats.xml | 403 | pas un flux | découverts: []
+Les Échos | https://www.lesechos.fr/idees-debats | 403 | pas un flux | découverts: []
+=> Les Échos: AUCUN FLUX
+L'Express | https://www.lexpress.fr/arc/outboundfeeds/rss/idees-et-debats.xml | 200 | 100 articles | ex: Solitude, écrans, IA érotiques : "Nous sombrons dans le monde de l’obsolescence 
+=> L'Express: https://www.lexpress.fr/arc/outboundfeeds/rss/idees-et-debats.xml
+Marianne | https://www.marianne.net/rss.xml | 405 | pas un flux | découverts: []
+Marianne | https://www.marianne.net/ | 405 | pas un flux | découverts: []
+=> Marianne: AUCUN FLUX
+Revue des Deux Mondes | https://www.revuedesdeuxmondes.fr/feed/ | 200 | 10 articles | ex: Le Bleu du ciel de Georges Bataille, nouvelle résurrection
+=> Revue des Deux Mondes: https://www.revuedesdeuxmondes.fr/feed/
+Courrier international | https://www.courrierinternational.com/feed/all/rss.xml | 200 | 20 articles | ex: La paille dans l’œil du voisin
+=> Courrier international: https://www.courrierinternational.com/feed/all/rss.xml
+AOC | https://aoc.media/feed/ | 200 | 10 articles | ex: Durassic Park
+=> AOC: https://aoc.media/feed/
+Esprit | https://esprit.presse.fr/rss | 200 | pas un flux | découverts: []
+Esprit | https://esprit.presse.fr/ | 200 | pas un flux | découverts: ['https://esprit.presse.fr/rss/news.xml']
+Esprit | https://esprit.presse.fr/rss/news.xml | découvert | 100 articles | ex: La société civile a-t-elle encore voix au chapitre ?
+=> Esprit: https://esprit.presse.fr/rss/news.xml
+Le Rubicon | https://lerubicon.org/feed/ | 200 | 100 articles | ex: Théo Clément : « Pourquoi les Nord-Coréens conservent-ils, de manière paradoxale
+=> Le Rubicon: https://lerubicon.org/feed/
+Desk Russie | https://desk-russie.eu/feed | 200 | 10 articles | ex: Le reformatage du FN/RN : ni à droite ni à gauche mais à l’Est
+=> Desk Russie: https://desk-russie.eu/feed
+Diploweb | https://www.diploweb.com/spip.php?page=backend | 200 | 10 articles | ex: Defence : From Strategic Dependence to European Military Autonomy ?
+=> Diploweb: https://www.diploweb.com/spip.php?page=backend
+Conflits | https://www.revueconflits.com/feed/ | 200 | 10 articles | ex: Rassvet : la réponse russe à Starlink
+=> Conflits: https://www.revueconflits.com/feed/
+Atlantico | https://atlantico.fr/rss | 404 | pas un flux | découverts: []
+Atlantico | https://atlantico.fr/ | 200 | pas un flux | découverts: ['https://rss.atlantico.fr']
+Atlantico | https://rss.atlantico.fr | découvert | 15 articles | ex: Acte II : d’un point de vue sécuritaire, l’Etat a repris la rue mais pas la main
+=> Atlantico: https://rss.atlantico.fr
+Le Figaro Vox | https://www.lefigaro.fr/rss/figaro_vox.xml | 200 | 20 articles | ex: Jean-Claude Michéa : « Au nom du politiquement correct, les missions les plus él
+=> Le Figaro Vox: https://www.lefigaro.fr/rss/figaro_vox.xml
