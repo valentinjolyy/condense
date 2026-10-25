@@ -29,6 +29,40 @@ def lien(it):
     return {"source": it["source"], "titre": it["title"], "url": it["url"], "date": it.get("published")}
 
 
+STOP = set("""avec dans pour sans sous selon après avant contre entre leurs cette celle ceux être avoir fait font
+plus moins très tout tous toute toutes depuis encore alors ainsi comme mais donc dont elle elles nous vous ils
+samedi dimanche lundi mardi mercredi jeudi vendredi octobre novembre décembre janvier février mars avril mai juin
+juillet août septembre direct france français française selon""".split())
+
+
+def _words(s):
+    import re
+    return {w for w in re.findall(r"[a-zàâçéèêëîïôûùüœ0-9]{5,}", (s or "").lower()) if w not in STOP}
+
+
+def consolidate(stories: dict) -> list:
+    """Fusionne les sujets qui parlent du même événement. Retourne les ids supprimés."""
+    items = sorted(stories.values(), key=lambda s: (bool(s.get("complet")), int(s.get("importance") or 0), s.get("last") or ""), reverse=True)
+    removed = []
+    kept = []
+    for st in items:
+        w = _words(st.get("titre", "") + " " + st.get("phrase", ""))
+        twin = None
+        for k, kw in kept:
+            if w and kw and len(w & kw) / min(len(w), len(kw)) >= 0.5 and len(w & kw) >= 3:
+                twin = k
+                break
+        if twin is None:
+            kept.append((st, w))
+            continue
+        urls = {l.get("url") for l in twin.get("liens", [])}
+        twin["liens"] = twin.get("liens", []) + [l for l in st.get("liens", []) if l.get("url") not in urls]
+        twin["last"] = max(twin.get("last") or "", st.get("last") or "")
+        stories.pop(st["id"], None)
+        removed.append(st["id"])
+    return removed
+
+
 def main():
     repo, token, pw = (os.environ[k] for k in ("CONDENSE_REPO", "CONDENSE_TOKEN", "CONDENSE_PASS"))
     now = E.now_utc()
@@ -155,60 +189,23 @@ def main():
             st["ai"] = True
         for it in batch:
             if it["id"] not in handled:
-                add_analysis(it) if it["kind"] == "analysis" else raw_story(it)
+                if it["kind"] == "analysis":
+                    add_analysis(it)
                 handled.add(it["id"])
-    for it in pending:  # sans IA : affichage brut
-        add_analysis(it) if it["kind"] == "analysis" else raw_story(it)
-
-    data["seen"] = list(data["seen"]) + [i["url"] for i in fresh + skipped]
-    hors_sujet = [sid for sid, st in stories.items() if st.get("categorie") == "Sport"]
+    # sans IA : rien de brut ; ces articles seront repris au prochain passage
+    retry = {i["url"] for i in pending}
+    data["seen"] = list(data["seen"]) + [i["url"] for i in fresh + skipped if i["url"] not in retry]
+    hors_sujet = [sid for sid, st in stories.items()
+                  if st.get("categorie") == "Sport" or st.get("ai") is False
+                  or (not st.get("complet") and int(st.get("importance") or 0) < 3)]
     for sid in hors_sujet:
-        del stories[sid]
+        stories.pop(sid, None)
+    hors_sujet += consolidate(stories)
     data["deleted"] = list(data.get("deleted", [])) + hors_sujet
     data["stories"] = list(stories.values())
     data["analyses"] = list(analyses.values())
 
-    # ---- Pages du jour, si Claude ne les a pas encore faites (Mac éteint)
-    if ai_ok:
-        lines = lambda its: "\n".join(E.short_line(i) for i in its)
-        recent_items = [i for i in items if not i.get("published") or E.parse_iso(i["published"]) > now - timedelta(hours=26)]
-        def links(ids):
-            return [lien(by_id[i]) for i in ids or [] if i in by_id]
-        try:
-            if (data.get("agenda") or {}).get("date") != today and paris.hour >= 5:
-                res = E.gemini(E.AGENDA_PROMPT.format(date=E.fr_date(now), titles="\n".join(E.short_line(i, False) for i in recent_items[:150])), search=True, max_tokens=12000)
-                ev = sorted([e for e in res.get("evenements", []) if isinstance(e, dict) and e.get("titre")], key=lambda e: e.get("heure") or "99")
-                data["agenda"] = {"date": today, "label": E.fr_date(now), "updated": E.iso(now), "par": "relais",
-                                  "midi": paris.hour >= 12, "evenements": ev, "semaine": res.get("semaine", [])}
-                E.log(f"Agenda : {len(ev)} événements")
-            mi = [i for i in recent_items if i["source"] in ("Le Monde", "Le Figaro")]
-            if (data.get("revue") or {}).get("date") != today and paris.hour >= 6 and len(mi) >= 10:
-                res = E.gemini(E.REVUE_PROMPT.format(date=E.fr_date(now), heure=paris.strftime("%Hh%M"), items=lines(mi[:220])), search=True, max_tokens=40000)
-                rubs = []
-                for r in res.get("rubriques", []):
-                    su = [s for s in r.get("sujets", []) if isinstance(s, dict) and s.get("titre")]
-                    br = [b for b in r.get("breves", []) if isinstance(b, dict)]
-                    for x in su + br:
-                        x["liens"] = links(x.pop("items", []))
-                    if su or br:
-                        rubs.append({"nom": r.get("nom", ""), "sujets": su, "breves": br})
-                data["revue"] = {"date": today, "label": E.fr_date(now), "updated": E.iso(now), "par": "relais",
-                                 "essentiel": res.get("essentiel", ""), "rubriques": rubs}
-                E.log("Revue préparée par le relais")
-            ci = [i for i in recent_items if any(r in ("International", "Économie", "Une") for r in i["rubriques"])]
-            if (data.get("comprendre") or {}).get("date") != today and paris.hour >= 7 and len(ci) >= 8:
-                res = E.gemini(E.COMPRENDRE_PROMPT.format(date=E.fr_date(now), items=lines(ci[:200])), search=True, max_tokens=24000)
-                ds = [d for d in res.get("dossiers", []) if isinstance(d, dict) and d.get("titre")]
-                for d in ds:
-                    d["liens"] = links(d.pop("items", []))
-                data["comprendre"] = {"date": today, "label": E.fr_date(now), "updated": E.iso(now), "par": "relais",
-                                      "dossiers": ds, "notion": res.get("notion") or {},
-                                      "chiffre_du_jour": res.get("chiffre_du_jour") or {}}
-                E.log("Comprendre préparé par le relais")
-        except E.AIUnavailable as e:
-            E.log(f"Pages du jour reportées : {e}")
-
-    daily_done = any("préparé" in l or "Agenda :" in l for l in E.LOG)
+    daily_done = bool(hors_sujet)
     if not fresh and not skipped and not daily_done:
         last = E.parse_iso(((data.get("meta") or {}).get("relay") or {}).get("updated"))
         if last and last > now - timedelta(minutes=60) and not os.environ.get("RELAY_PING"):
