@@ -62,7 +62,7 @@
   // ---------- État ----------
   const S = {
     live: null, analyses: null, revue: null, agenda: null, comprendre: null, meta: null,
-    view: "direct", filter: "all", showMinor: false, limit: 60,
+    view: "journal", filter: "all", showMinor: false, limit: 60,
     anaSrc: "all", anaType: "all",
   };
   let prevVisit = store.get("lastSeen", Date.now() - 12 * 3600e3);
@@ -133,7 +133,7 @@
       lastRaw = b;
       S.live = { stories: d.stories || [] };
       S.analyses = { items: d.analyses || [] };
-      S.agenda = d.agenda || null; S.revue = d.revue || null; S.comprendre = d.comprendre || null;
+      S.agenda = d.agenda || null; S.revue = d.revue || null; S.journal = d.journal || null;
       const m = d.meta || {};
       const last = [m.updated, m.relay?.updated].filter(Boolean).sort().pop();
       S.meta = { ...m, claude_updated: m.updated, updated: last };
@@ -169,10 +169,9 @@
 
   // ---------- Rendu ----------
   function render() {
+    renderJournal();
     renderDirect();
-    renderRevue();
     renderAnalyses();
-    renderComprendre();
     updateBadges();
   }
 
@@ -198,7 +197,7 @@
         (S.meta?.empty ? `<div class="empty"><b>En attente du premier passage</b>Les sujets apparaissent après la première mise à jour.</div>` : "");
       return;
     }
-    const all = stories().filter(relevant).filter((s) => S.showMinor || (s.importance || 0) >= 2);
+    const all = dedupe(stories().filter(relevant)).filter((s) => S.showMinor || (s.importance || 0) >= 3);
     const unread = all.filter((s) => !isRead(s));
     const read = all.filter(isRead).sort((a, b) => (readMap[b.id] || 0) - (readMap[a.id] || 0));
     const fresh = unread.filter((s) => t(s.last) > prevVisit).length;
@@ -209,8 +208,6 @@
       ? `<b>actualité${unread.length > 1 ? "s" : ""} non lue${unread.length > 1 ? "s" : ""}</b>${fresh ? `, dont <b>${fresh} nouvelle${fresh > 1 ? "s" : ""}</b> depuis ta dernière visite (${ago(prevVisit)})` : `. Rien de neuf depuis ta dernière visite (${ago(prevVisit)})`}${upd ? `. ${upd} sujet${upd > 1 ? "s" : ""} déjà lu${upd > 1 ? "s" : ""} a du nouveau` : ""}.`
       : `<b>Tout est lu.</b> Rien de neuf depuis ta dernière visite (${ago(prevVisit)}).`}
       ${Object.keys(readMap).length ? "" : `<span class="hint">Glisse une actualité vers la droite pour la marquer comme lue.</span>`}</div></div>`;
-
-    html += agendaWidget();
 
     const counts = {};
     unread.forEach((s) => { counts[s.categorie] = (counts[s.categorie] || 0) + 1; });
@@ -233,7 +230,7 @@
     }
     html += "</div>";
     if (list.length > S.limit) html += `<button class="load-more" id="moreStories">Afficher plus (${list.length - S.limit})</button>`;
-    if (!S.showMinor) html += `<button class="load-more subtle" id="showMinor">Afficher aussi les infos secondaires</button>`;
+    if (!S.showMinor) html += `<button class="load-more subtle" id="showMinor">Afficher aussi les sujets secondaires</button>`;
     const readList = filt(read);
     if (readList.length) {
       html += `<button class="read-toggle ${S.showRead ? "open" : ""}" id="readToggle"><span>Déjà lus</span><span class="c">${readList.length}</span>${ICON.chev}</button>`;
@@ -243,12 +240,40 @@
 
     $$("#directChips .chip", el).forEach((b) => b.onclick = () => { S.filter = b.dataset.f; S.limit = 60; renderDirect(); });
     $$(".story", el).forEach((c) => c.addEventListener("click", () => openStory(c.dataset.id)));
-    attachSwipe(el, ".story", (id) => { const s = stories().find((x) => x.id === id); if (!s) return; setRead(id, !isRead(s)); render(); });
+    attachSwipe(el, ".story", (id) => {
+      const s = all.find((x) => x.id === id) || stories().find((x) => x.id === id); if (!s) return;
+      const on = !isRead(s);
+      // un sujet regroupé : on marque aussi ses doublons
+      const w = wordsOf((s.titre || "") + " " + (s.phrase || ""));
+      stories().forEach((x) => { if (x.id === id) return; const xw = wordsOf((x.titre || "") + " " + (x.phrase || "")); let i = 0; xw.forEach((k) => { if (w.has(k)) i++; }); if (i >= 3 && i / Math.min(w.size, xw.size) >= 0.5) setRead(x.id, on); });
+      setRead(id, on); quietRender();
+    });
     $$(".evt", el).forEach((c) => c.onclick = () => openAgenda());
     $("#agendaAll", el)?.addEventListener("click", openAgenda);
     $("#moreStories", el)?.addEventListener("click", () => { S.limit += 60; renderDirect(); });
     $("#showMinor", el)?.addEventListener("click", () => { S.showMinor = true; renderDirect(); });
-    $("#readToggle", el)?.addEventListener("click", () => { S.showRead = !S.showRead; renderDirect(); });
+    $("#readToggle", el)?.addEventListener("click", () => { S.showRead = !S.showRead; const y = window.scrollY; renderDirect(); window.scrollTo(0, y); });
+  }
+
+  // Regroupe les sujets qui parlent du même événement (filet de sécurité côté app)
+  const STOPW = new Set("avec dans pour sans sous selon après avant contre entre leurs cette celle être avoir plus moins très tout tous toute toutes depuis encore alors ainsi comme mais donc dont elle elles nous vous samedi dimanche lundi mardi mercredi jeudi vendredi octobre novembre décembre janvier février mars avril juin juillet août septembre direct france français française".split(" "));
+  const wordsOf = (x) => new Set(((x || "").toLowerCase().match(/[a-zàâçéèêëîïôûùüœ0-9]{5,}/g) || []).filter((w) => !STOPW.has(w)));
+  function dedupe(list) {
+    const sorted = list.slice().sort((a, b) => (!!b.complet - !!a.complet) || ((b.importance || 0) - (a.importance || 0)) || (t(b.last) - t(a.last)));
+    const kept = [];
+    for (const s of sorted) {
+      const w = wordsOf((s.titre || "") + " " + (s.phrase || ""));
+      let twin = null;
+      for (const k of kept) {
+        let inter = 0; w.forEach((x) => { if (k.w.has(x)) inter++; });
+        if (inter >= 3 && inter / Math.min(w.size, k.w.size) >= 0.5) { twin = k; break; }
+      }
+      if (!twin) { kept.push({ s: { ...s, liens: [...(s.liens || [])] }, w }); continue; }
+      const urls = new Set(twin.s.liens.map((l) => l.url));
+      (s.liens || []).forEach((l) => { if (!urls.has(l.url)) twin.s.liens.push(l); });
+      if (t(s.last) > t(twin.s.last)) twin.s.last = s.last;
+    }
+    return kept.map((k) => k.s).sort((a, b) => t(b.last) - t(a.last));
   }
 
   function storyCard(s, i) {
@@ -271,38 +296,70 @@
       </div></article></div>`;
   }
 
-  // Glisser vers la droite : lu / non lu
+  // Glisser vers la droite : lu / non lu (geste amorti, sortie et repli fluides)
   function attachSwipe(root, sel, onCommit) {
+    const TH = 96;
     $$(sel, root).forEach((card) => {
-      let x0 = null, y0 = 0, dx = 0, drag = false;
+      let x0 = null, y0 = 0, dx = 0, drag = false, lastX = 0, lastT = 0, vel = 0;
       const wrap = card.parentElement;
-      card.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse" && e.button !== 0) return; x0 = e.clientX; y0 = e.clientY; dx = 0; drag = false; });
+      card.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        x0 = e.clientX; y0 = e.clientY; dx = 0; drag = false; lastX = x0; lastT = performance.now(); vel = 0;
+      });
       card.addEventListener("pointermove", (e) => {
         if (x0 === null) return;
         const ddx = e.clientX - x0, ddy = e.clientY - y0;
         if (!drag) {
-          if (ddx > 12 && Math.abs(ddx) > Math.abs(ddy) * 1.4) { drag = true; card.classList.add("dragging"); try { card.setPointerCapture(e.pointerId); } catch {} }
-          else if (Math.abs(ddy) > 12 || ddx < -12) { x0 = null; return; }
+          if (ddx > 10 && Math.abs(ddx) > Math.abs(ddy) * 1.5) {
+            drag = true; card.classList.add("dragging"); wrap.classList.add("swiping");
+            try { card.setPointerCapture(e.pointerId); } catch {}
+          } else if (Math.abs(ddy) > 10 || ddx < -10) { x0 = null; return; }
         }
-        if (drag) { dx = Math.max(0, ddx); card.style.transform = `translateX(${dx}px)`; wrap.style.setProperty("--p", Math.min(1, dx / 110).toFixed(2)); }
+        if (!drag) return;
+        const now = performance.now();
+        vel = (e.clientX - lastX) / Math.max(1, now - lastT); lastX = e.clientX; lastT = now;
+        const raw = Math.max(0, ddx);
+        dx = raw < 140 ? raw : 140 + (raw - 140) * 0.35; // résistance élastique
+        card.style.transform = `translate3d(${dx}px,0,0)`;
+        wrap.style.setProperty("--p", Math.min(1, dx / TH).toFixed(3));
+        wrap.classList.toggle("armed", dx > TH);
       });
       const end = () => {
         if (x0 === null) return;
         x0 = null;
-        card.classList.remove("dragging");
         if (!drag) return;
-        card._swiped = Date.now();
         drag = false;
-        if (dx > 100) {
-          card.style.transform = "translateX(105%)";
-          wrap.classList.add("gone");
-          setTimeout(() => onCommit(card.dataset.id), 280);
-        } else { card.style.transform = ""; wrap.style.setProperty("--p", 0); }
+        card._swiped = Date.now();
+        card.classList.remove("dragging");
+        if (dx > TH || (dx > 40 && vel > 0.6)) {
+          wrap.classList.add("armed", "leaving");
+          card.style.transform = "translate3d(calc(100% + 30px),0,0)";
+          setTimeout(() => {
+            const h = wrap.offsetHeight;
+            wrap.style.height = h + "px";
+            wrap.offsetHeight; // reflow
+            wrap.classList.add("collapsing");
+            wrap.style.height = "0px";
+          }, 260);
+          setTimeout(() => onCommit(card.dataset.id), 560);
+        } else {
+          card.style.transform = "";
+          wrap.style.setProperty("--p", 0);
+          wrap.classList.remove("armed", "swiping");
+        }
       };
       card.addEventListener("pointerup", end);
       card.addEventListener("pointercancel", end);
       card.addEventListener("click", (e) => { if (card._swiped && Date.now() - card._swiped < 500) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
     });
+  }
+  // Re-rendu sans animations d'entrée (après un geste), en gardant la position de défilement
+  function quietRender() {
+    const y = window.scrollY;
+    document.body.classList.add("no-anim");
+    render();
+    window.scrollTo(0, y);
+    setTimeout(() => document.body.classList.remove("no-anim"), 80);
   }
 
   function agendaWidget() {
@@ -327,42 +384,80 @@
       }).join("")}</div></div>`;
   }
 
-  // ----- Revue -----
-  function renderRevue() {
-    const el = $("#view-revue");
-    const r = S.revue;
-    if (!r || !r.rubriques) {
-      el.innerHTML = hero("Revue de presse") + `<div class="empty"><b>La revue arrive chaque matin</b>Le sommaire du Monde et du Figaro est préparé vers 6 h.</div>`;
+  // ----- Journal : le sommaire des éditions du Monde et du Figaro -----
+  const hashId = (x) => { let h = 0; for (const c of String(x)) h = (h * 31 + c.charCodeAt(0)) | 0; return "j" + (h >>> 0).toString(36); };
+  function renderJournal() {
+    const el = $("#view-journal");
+    const j = S.journal;
+    let html = hero("Le journal", frDay());
+    html += agendaWidget();
+    if (Array.isArray(j?.essentiel) && j.essentiel.length) {
+      html += `<div class="essentiel"><div class="k">L'essentiel</div>${j.essentiel.map((e) =>
+        `<div class="ess-item"><div class="ess-t">${esc(e.titre || "")}</div>${e.texte ? `<div class="ess-p">${esc(e.texte)}</div>` : ""}</div>`).join("")}</div>`;
+    }
+    const eds = ["Le Monde", "Le Figaro"].filter((n) => j?.editions?.[n]?.rubriques?.length || j?.editions?.[n]?.une?.length);
+    if (!eds.length) {
+      el.innerHTML = html + (S.revue?.rubriques ? revueFallback() : `<div class="empty"><b>Le sommaire arrive</b>Le Monde est lu après sa parution (vers 13 h 30), Le Figaro après la sienne (vers 22 h 30).</div>`);
+      bindJournal(el);
       return;
     }
-    const isToday = r.date === todayISO();
-    let html = hero("Revue de presse", isToday ? frDay() : "Édition du " + (r.label || ""));
-    if (Array.isArray(r.essentiel) && r.essentiel.length) {
-      html += `<div class="essentiel"><div class="k">L'essentiel ce matin</div>${r.essentiel.map((e) =>
-        `<div class="ess-item"><div class="ess-t">${esc(e.titre || "")}</div>${e.texte ? `<div class="ess-p">${esc(e.texte)}</div>` : ""}</div>`).join("")}</div>`;
-    } else if (r.essentiel) {
-      const parts = String(r.essentiel).split(/(?<=[.!?])\s+(?=[A-ZÀÂÉÈÊÎÔÛÇ«])/).filter(Boolean);
-      html += `<div class="essentiel"><div class="k">L'essentiel ce matin</div>${parts.map((p) => `<div class="ess-item"><div class="ess-p">${esc(p)}</div></div>`).join("")}</div>`;
-    }
+    if (!eds.includes(S.ed)) S.ed = eds[0];
+    html += `<div class="ed-seg" id="edSeg">${["Le Monde", "Le Figaro"].map((n) => {
+      const e = j.editions[n];
+      return `<button class="${S.ed === n ? "on" : ""} ${eds.includes(n) ? "" : "off"}" data-ed="${n}"><span class="src ${srcClass(n)}">${srcLetter(n)}</span><span><b>${n}</b><small>${e ? esc(e.label || "") : "pas encore paru"}</small></span></button>`;
+    }).join("")}</div>`;
+    const ed = j.editions[S.ed];
+    const opened = store.get("opened", {});
+    const row = (a, big) => {
+      const id = hashId(a.url || a.titre);
+      const sv = saved.some((x) => x.id === id);
+      return `<div class="art ${big ? "une" : ""} ${opened[id] ? "seen" : ""}">
+        <a href="${esc(a.url || "#")}" target="_blank" rel="noopener" data-open="${id}">
+          ${a.genre && a.genre !== "Article" ? `<div class="genre">${esc(a.genre)}</div>` : ""}
+          <div class="at">${esc(a.titre)}</div>
+          ${a.resume ? `<div class="ar">${esc(a.resume)}</div>` : ""}
+          ${a.auteur ? `<div class="au">${esc(a.auteur)}</div>` : ""}
+        </a>
+        <button class="art-save ${sv ? "on" : ""}" data-save="${id}" aria-label="Lire plus tard">${ICON.save}</button></div>`;
+    };
+    html += `<div class="ed-head">${ed.parution ? `Paru ${esc(whenLabel(ed.parution).toLowerCase())} · ` : ""}${(ed.rubriques || []).reduce((n, r) => n + (r.articles || []).length, 0) + (ed.une || []).length} articles</div>`;
+    if (ed.une?.length) html += `<h2 class="rub-title">À la une</h2><div class="arts">${ed.une.map((a) => row(a, true)).join("")}</div>`;
+    (ed.rubriques || []).forEach((r) => {
+      if (!r.articles?.length) return;
+      html += `<h2 class="rub-title">${esc(r.nom)}</h2><div class="arts">${r.articles.map((a) => row(a)).join("")}</div>`;
+    });
+    html += `<div class="note">Sommaire établi par Claude à partir de l'édition complète, lue avec ton abonnement. Touche un titre pour lire l'article.</div>`;
+    el.innerHTML = html;
+    bindJournal(el);
+    $$("#edSeg button", el).forEach((b) => b.onclick = () => { if (b.classList.contains("off")) return; S.ed = b.dataset.ed; const y = window.scrollY; renderJournal(); window.scrollTo(0, Math.min(y, $("#edSeg").offsetTop - 70)); });
+    $$("[data-open]", el).forEach((a) => a.addEventListener("click", () => {
+      const o = store.get("opened", {}); o[a.dataset.open] = Date.now(); store.set("opened", o);
+      setTimeout(() => a.parentElement.classList.add("seen"), 600);
+    }));
+    const all = [...(ed.une || []), ...(ed.rubriques || []).flatMap((r) => (r.articles || []).map((x) => ({ ...x, rub: r.nom })))];
+    $$("[data-save]", el).forEach((b) => b.onclick = (e) => {
+      e.preventDefault();
+      const a = all.find((x) => hashId(x.url || x.titre) === b.dataset.save);
+      if (!a) return;
+      toggleSave({ id: b.dataset.save, kind: "analyse", titre: a.titre, sub: `${S.ed}${a.rub ? " · " + a.rub : ""}`, url: a.url }, () => { const y = window.scrollY; renderJournal(); window.scrollTo(0, y); });
+    });
+  }
+  function bindJournal(el) {
+    $$(".evt", el).forEach((c) => c.onclick = () => openAgenda());
+    $("#agendaAll", el)?.addEventListener("click", openAgenda);
+    $$(".sujet", el).forEach((c) => c.onclick = () => openSujet(S.revue.rubriques[c.dataset.r].sujets[c.dataset.s], S.revue.rubriques[c.dataset.r].nom));
+  }
+  function revueFallback() {
+    const r = S.revue;
+    let html = "";
     let n = 0;
     r.rubriques.forEach((rub, ri) => {
       html += `<h2 class="rub-title">${esc(rub.nom)}</h2>`;
       rub.sujets.forEach((s, si) => {
-        html += `<div class="sujet" data-r="${ri}" data-s="${si}" style="animation-delay:${Math.min(n++, 10) * 40}ms">
-          <div class="ttl">${esc(s.titre)}</div><div class="ex">${esc(s.resume || s.synthese)}</div>
-          <div class="foot">${badges(s.liens)}<span class="n" style="font-size:12px;color:var(--muted)">${(s.liens || []).length} article${(s.liens || []).length > 1 ? "s" : ""}</span></div></div>`;
+        html += `<div class="sujet" data-r="${ri}" data-s="${si}" style="animation-delay:${Math.min(n++, 10) * 40}ms"><div class="ttl">${esc(s.titre)}</div><div class="ex">${esc(s.resume || s.synthese)}</div><div class="foot">${badges(s.liens)}</div></div>`;
       });
-      if (rub.breves?.length) {
-        html += `<div class="section-title"><h2>En bref</h2></div><div class="breves">${rub.breves.map((b) => {
-          const first = (b.liens || [])[0];
-          return `<a class="breve" ${first ? `href="${esc(first.url)}" target="_blank" rel="noopener"` : ""}>
-            <div class="bt">${esc(b.titre || "")}</div>${b.phrase ? `<div class="bp">${esc(b.phrase)}</div>` : ""}
-            <div class="bl">${badges(b.liens)}</div></a>`;
-        }).join("")}</div>`;
-      }
     });
-    el.innerHTML = html;
-    $$(".sujet", el).forEach((c) => c.onclick = () => openSujet(r.rubriques[c.dataset.r].sujets[c.dataset.s], r.rubriques[c.dataset.r].nom));
+    return html;
   }
 
   // ----- Analyses -----
@@ -412,8 +507,8 @@
     el.innerHTML = html;
     $$("#anaSrc .chip", el).forEach((b) => b.onclick = () => { S.anaSrc = b.dataset.k; renderAnalyses(); });
     $$("#anaType .chip", el).forEach((b) => b.onclick = () => { S.anaType = b.dataset.k; renderAnalyses(); });
-    $("#readToggleA", el)?.addEventListener("click", () => { S.showReadA = !S.showReadA; renderAnalyses(); });
-    attachSwipe(el, ".ana", (id) => { setRead("a:" + id, !readMap["a:" + id]); render(); });
+    $("#readToggleA", el)?.addEventListener("click", () => { S.showReadA = !S.showReadA; const y = window.scrollY; renderAnalyses(); window.scrollTo(0, y); });
+    attachSwipe(el, ".ana", (id) => { setRead("a:" + id, !readMap["a:" + id]); quietRender(); });
     $$(".ana", el).forEach((c) => c.addEventListener("click", (ev) => {
       const sb = ev.target.closest("[data-save]");
       if (!sb) return;
@@ -421,46 +516,6 @@
       const a = items.find((x) => x.id === sb.dataset.save);
       toggleSave({ id: a.id, kind: "analyse", titre: a.titre, sub: `${a.type} · ${a.source}`, url: a.url }, renderAnalyses);
     }));
-  }
-
-  // ----- Comprendre -----
-  function renderComprendre() {
-    const el = $("#view-comprendre");
-    const c = S.comprendre;
-    let html = hero("Comprendre", "International et économie, pour aller plus loin");
-    if (!c || !c.dossiers) {
-      el.innerHTML = html + `<div class="empty"><b>Les dossiers arrivent chaque matin</b>Quatre sujets internationaux et économiques expliqués en profondeur, vers 7 h.</div>` + shortcuts();
-      bindShortcuts(el);
-      return;
-    }
-    const cd = c.chiffre_du_jour || {}, no = c.notion || {};
-    html += `<div class="duo">
-      ${cd.valeur ? `<div class="tile"><div class="k">Chiffre du jour</div><div class="big">${esc(cd.valeur)}</div><div class="lab">${esc(cd.libelle)}</div><div class="sm">${esc(cd.explication || "")}</div></div>` : ""}
-      ${no.terme ? `<div class="tile" id="notion" style="animation-delay:60ms"><div class="k">Notion du jour</div><div class="term">${esc(no.terme)}</div><div class="sm">${esc((no.definition || "").slice(0, 110))}${(no.definition || "").length > 110 ? "…" : ""}</div></div>` : ""}
-    </div>`;
-    ["International", "Économie"].forEach((dom) => {
-      const ds = c.dossiers.filter((d) => d.domaine === dom);
-      if (!ds.length) return;
-      html += `<div style="height:14px"></div>`;
-      ds.forEach((d, i) => {
-        html += `<div class="dossier ${esc(dom)}" data-i="${c.dossiers.indexOf(d)}" style="animation-delay:${i * 60}ms">
-          <div class="dom">${esc(dom)}</div><div class="ttl">${esc(d.titre)}</div><div class="eb">${esc(d.en_bref)}</div>
-          <div class="read-more">Comprendre le dossier ${ICON.chev}</div></div>`;
-      });
-    });
-    html += shortcuts();
-    el.innerHTML = html;
-    $$(".dossier", el).forEach((x) => x.onclick = () => openDossier(c.dossiers[x.dataset.i]));
-    $("#notion", el)?.addEventListener("click", () => openNotion(no));
-    bindShortcuts(el);
-  }
-  function shortcuts() {
-    return `<div class="section-title"><h2>Suivre en continu</h2></div>
-      <div class="duo"><button class="tile" data-go="International" style="text-align:left"><div class="k">Fil</div><div class="lab" style="font-size:16px">Toute l'actualité internationale</div></button>
-      <button class="tile" data-go="Économie" style="text-align:left;animation-delay:60ms"><div class="k">Fil</div><div class="lab" style="font-size:16px">Toute l'actualité économique</div></button></div>`;
-  }
-  function bindShortcuts(el) {
-    $$("[data-go]", el).forEach((b) => b.onclick = () => { S.filter = b.dataset.go; switchView("direct"); renderDirect(); });
   }
 
   // ---------- Feuilles de détail ----------
@@ -702,7 +757,7 @@
         if (x.kind === "analyse") { window.open(x.url, "_blank", "noopener"); return; }
         if (x.kind === "story") openStory(x.id, stories().find((s) => s.id === x.id) || x.data);
         else if (x.kind === "sujet") openSujet(x.data, x.data.rub || "");
-        else if (x.kind === "dossier") openDossier(x.data);
+        else if (x.kind === "dossier") openSujet(x.data, "");
       });
       $$("[data-rm]", el).forEach((b) => b.onclick = () => {
         const c = cats[b.dataset.rm];
@@ -774,7 +829,7 @@
   }
 
   // ---------- Navigation ----------
-  const VIEWS = ["direct", "revue", "analyses", "comprendre"];
+  const VIEWS = ["journal", "direct", "analyses"];
   function switchView(v) {
     if (S.view === v) { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     S.view = v;
@@ -869,7 +924,8 @@
   setInterval(updateClock, 60e3);
 
   // ---------- Démarrage ----------
-  switchView(store.get("view", "direct") === "direct" ? "direct" : store.get("view", "direct"));
+  S.view = "journal";
+  { const v0 = store.get("view", "journal"); if (VIEWS.includes(v0) && v0 !== "journal") switchView(v0); }
   render();
   load();
   // la visite courante devient la référence à la prochaine ouverture
