@@ -54,7 +54,7 @@ def merge(local: dict, remote: dict) -> dict:
     lim_s = (now - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
     lim_a = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     out = dict(remote)
-    out.update({k: v for k, v in local.items() if k not in ("stories", "analyses", "seen", "meta", "agenda", "revue", "comprendre", "journal", "deleted", "plusloin", "seen_pl", "plusloin_editions")})
+    out.update({k: v for k, v in local.items() if k not in ("stories", "analyses", "seen", "meta", "agenda", "revue", "comprendre", "journal", "deleted", "plusloin", "seen_pl", "plusloin_editions", "pl_cand", "pl_done")})
     # Journal : le plus récent ; édition par édition
     jl, jr = local.get("journal") or {}, remote.get("journal") or {}
     if jl or jr:
@@ -97,6 +97,14 @@ def merge(local: dict, remote: dict) -> dict:
         if a.get("id"):
             pls[a["id"]] = a
     out["plusloin"] = sorted([a for a in pls.values() if _t(a.get("date")) >= lim_p and a.get("id") not in dset], key=lambda a: _t(a.get("date")), reverse=True)[:300]
+    pl_done = list(dict.fromkeys(list(remote.get("pl_done", [])) + list(local.get("pl_done", []))))[-4000:]
+    out["pl_done"] = pl_done
+    pdone = set(pl_done)
+    cands = {}
+    for c in remote.get("pl_cand", []) + local.get("pl_cand", []):
+        if c.get("id") and c["id"] not in pdone:
+            cands[c["id"]] = c
+    out["pl_cand"] = sorted(cands.values(), key=lambda c: _t(c.get("date")), reverse=True)[:400]
     out["seen_pl"] = list(dict.fromkeys(list(remote.get("seen_pl", [])) + list(local.get("seen_pl", []))))[-3000:]
     # Éditions hebdomadaires (La Tribune Dimanche…) : la plus récente par titre
     ple = dict(remote.get("plusloin_editions") or {})
